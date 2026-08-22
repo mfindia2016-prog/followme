@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { createClient } from "@/lib/supabase-browser";
 
 type Agent = {
   id: string;
@@ -10,45 +10,11 @@ type Agent = {
   is_active?: boolean;
 };
 
-type Lead = {
-  id: string;
-  customer_name: string;
-  company_name: string | null;
-  phone: string | null;
-  contact_no: string | null;
-  email: string | null;
-  email_id: string | null;
-  city: string | null;
-  state: string | null;
-  product: string | null;
-  source: string | null;
-
-  assigned_agent: string | null;
-  assigned_agent_id: string | null;
-
-  status: string | null;
-  lead_status: string | null;
-
-  remarks: string | null;
-  notes: string | null;
-
-  next_followup_at: string | null;
-  next_follow_up_date: string | null;
-  next_follow_up_time: string | null;
-
-  reminder_enabled: boolean | null;
-};
-
 export default function EditLeadPage() {
   const router = useRouter();
   const params = useParams();
 
-  const leadId =
-    typeof params?.id === "string"
-      ? params.id
-      : Array.isArray(params?.id)
-      ? params.id[0]
-      : "";
+  const id = params?.id as string;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,187 +31,200 @@ export default function EditLeadPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
 
-  // MANUAL PRODUCT TEXT
+  // MANUAL PRODUCT
   const [product, setProduct] = useState("");
 
   const [source, setSource] = useState("");
   const [assignedAgent, setAssignedAgent] = useState("");
-
   const [status, setStatus] = useState("new");
+
   const [remarks, setRemarks] = useState("");
 
-  const [nextFollowUpDate, setNextFollowUpDate] = useState("");
-  const [nextFollowUpTime, setNextFollowUpTime] = useState("");
+  const [nextFollowUpDate, setNextFollowUpDate] =
+    useState("");
+
+  const [nextFollowUpTime, setNextFollowUpTime] =
+    useState("");
 
   const [reminderEnabled, setReminderEnabled] =
     useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadData() {
-      setLoading(true);
-      setError("");
-
-      if (!leadId) {
-        setError("Lead ID is missing from the URL.");
-        setLoading(false);
-        return;
-      }
-
+    async function loadLead() {
       try {
-        const supabase = supabaseBrowser();
+        setLoading(true);
+        setError("");
 
-        // -----------------------------------------
+        console.log("EDIT LEAD ID:", id);
+
+        if (!id) {
+          throw new Error(
+            "Lead ID is missing from the URL."
+          );
+        }
+
+        const supabase = createClient();
+
+        // ----------------------------------------
         // LOAD LEAD
-        // -----------------------------------------
+        // ----------------------------------------
 
-        const {
-          data: lead,
-          error: leadError,
-        } = await supabase
-          .from("leads")
-          .select("*")
-          .eq("id", leadId)
-          .maybeSingle();
+        const { data, error: leadError } =
+          await supabase
+            .from("leads")
+            .select("*")
+            .eq("id", id)
+            .single();
+
+        console.log("LEAD DATA:", data);
+        console.log("LEAD ERROR:", leadError);
 
         if (leadError) {
           throw new Error(
-            `Unable to load lead: ${leadError.message}`
+            leadError.message
           );
         }
 
-        if (!lead) {
+        if (!data) {
           throw new Error(
-            "Lead not found. Please return to Leads and try again."
+            "Lead not found."
           );
         }
 
-        // -----------------------------------------
-        // LOAD AGENTS
-        // -----------------------------------------
+        // ----------------------------------------
+        // CUSTOMER
+        // ----------------------------------------
 
-        const {
-          data: agentData,
-          error: agentError,
-        } = await supabase
-          .from("agent_profiles")
-          .select("id, agent_name, is_active")
-          .order("agent_name", {
-            ascending: true,
-          });
+        setCustomerName(
+          data.customer_name ?? ""
+        );
 
-        if (agentError) {
-          throw new Error(
-            `Unable to load agents: ${agentError.message}`
-          );
-        }
-
-        if (cancelled) return;
-
-        // -----------------------------------------
-        // SET AGENTS
-        // -----------------------------------------
-
-        setAgents((agentData ?? []) as Agent[]);
-
-        // -----------------------------------------
-        // SET CUSTOMER INFORMATION
-        // -----------------------------------------
-
-        setCustomerName(lead.customer_name ?? "");
-        setCompanyName(lead.company_name ?? "");
+        setCompanyName(
+          data.company_name ?? ""
+        );
 
         setPhone(
-          lead.phone ??
-            lead.contact_no ??
+          data.phone ??
+            data.contact_no ??
             ""
         );
 
         setEmail(
-          lead.email ??
-            lead.email_id ??
+          data.email ??
+            data.email_id ??
             ""
         );
 
-        setCity(lead.city ?? "");
-        setState(lead.state ?? "");
+        setCity(
+          data.city ?? ""
+        );
 
-        // -----------------------------------------
+        setState(
+          data.state ?? ""
+        );
+
+        // ----------------------------------------
         // PRODUCT
-        // -----------------------------------------
+        // ----------------------------------------
 
-        setProduct(lead.product ?? "");
+        setProduct(
+          data.product ?? ""
+        );
 
-        // -----------------------------------------
+        // ----------------------------------------
         // SOURCE
-        // -----------------------------------------
+        // ----------------------------------------
 
-        setSource(lead.source ?? "");
+        setSource(
+          data.source ?? ""
+        );
 
-        // -----------------------------------------
+        // ----------------------------------------
         // AGENT
-        // -----------------------------------------
+        // ----------------------------------------
 
         setAssignedAgent(
-          lead.assigned_agent ??
-            lead.assigned_agent_id ??
+          data.assigned_agent ??
+            data.assigned_agent_id ??
             ""
         );
 
-        // -----------------------------------------
+        // ----------------------------------------
         // STATUS
-        // -----------------------------------------
+        // ----------------------------------------
 
         setStatus(
-          lead.status ??
-            lead.lead_status ??
+          data.status ??
+            data.lead_status ??
             "new"
         );
 
-        // -----------------------------------------
+        // ----------------------------------------
         // NOTES
-        // -----------------------------------------
+        // ----------------------------------------
 
         setRemarks(
-          lead.remarks ??
-            lead.notes ??
+          data.remarks ??
+            data.notes ??
             ""
         );
 
-        // -----------------------------------------
-        // FOLLOW-UP DATE/TIME
-        // -----------------------------------------
+        // ----------------------------------------
+        // FOLLOW UP
+        // ----------------------------------------
 
-        if (lead.next_follow_up_date) {
+        if (data.next_follow_up_date) {
           setNextFollowUpDate(
-            lead.next_follow_up_date
+            data.next_follow_up_date
           );
-        } else if (lead.next_followup_at) {
-          const d = new Date(
-            lead.next_followup_at
-          );
+        }
 
-          if (!Number.isNaN(d.getTime())) {
-            const year = d.getFullYear();
+        if (data.next_follow_up_time) {
+          setNextFollowUpTime(
+            String(
+              data.next_follow_up_time
+            ).substring(0, 5)
+          );
+        }
+
+        // If old timestamp exists but separate
+        // date/time fields are empty
+        if (
+          data.next_followup_at &&
+          !data.next_follow_up_date
+        ) {
+          const date =
+            new Date(
+              data.next_followup_at
+            );
+
+          if (
+            !Number.isNaN(
+              date.getTime()
+            )
+          ) {
+            const year =
+              date.getFullYear();
+
             const month = String(
-              d.getMonth() + 1
+              date.getMonth() + 1
             ).padStart(2, "0");
+
             const day = String(
-              d.getDate()
+              date.getDate()
+            ).padStart(2, "0");
+
+            const hours = String(
+              date.getHours()
+            ).padStart(2, "0");
+
+            const minutes = String(
+              date.getMinutes()
             ).padStart(2, "0");
 
             setNextFollowUpDate(
               `${year}-${month}-${day}`
             );
-
-            const hours = String(
-              d.getHours()
-            ).padStart(2, "0");
-
-            const minutes = String(
-              d.getMinutes()
-            ).padStart(2, "0");
 
             setNextFollowUpTime(
               `${hours}:${minutes}`
@@ -253,25 +232,48 @@ export default function EditLeadPage() {
           }
         }
 
-        if (lead.next_follow_up_time) {
-          setNextFollowUpTime(
-            String(
-              lead.next_follow_up_time
-            ).substring(0, 5)
+        // ----------------------------------------
+        // REMINDER
+        // ----------------------------------------
+
+        setReminderEnabled(
+          data.reminder_enabled !== false
+        );
+
+        // ----------------------------------------
+        // LOAD AGENTS
+        // ----------------------------------------
+
+        const {
+          data: agentData,
+          error: agentError,
+        } = await supabase
+          .from("agent_profiles")
+          .select(
+            "id, agent_name, is_active"
+          )
+          .order("agent_name", {
+            ascending: true,
+          });
+
+        if (agentError) {
+          console.error(
+            "Agent loading error:",
+            agentError
+          );
+        } else {
+          setAgents(
+            (agentData ??
+              []) as Agent[]
           );
         }
 
-        // -----------------------------------------
-        // REMINDER
-        // -----------------------------------------
-
-        setReminderEnabled(
-          lead.reminder_enabled !== false
-        );
-
         setLoading(false);
       } catch (err) {
-        if (cancelled) return;
+        console.error(
+          "EDIT PAGE ERROR:",
+          err
+        );
 
         setError(
           err instanceof Error
@@ -283,16 +285,12 @@ export default function EditLeadPage() {
       }
     }
 
-    loadData();
+    loadLead();
+  }, [id]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [leadId]);
-
-  // -----------------------------------------
-  // SAVE LEAD
-  // -----------------------------------------
+  // ----------------------------------------
+  // SAVE
+  // ----------------------------------------
 
   async function handleSubmit(
     e: FormEvent<HTMLFormElement>
@@ -301,11 +299,6 @@ export default function EditLeadPage() {
 
     setError("");
     setSuccess("");
-
-    if (!leadId) {
-      setError("Lead ID is missing.");
-      return;
-    }
 
     if (!customerName.trim()) {
       setError(
@@ -324,27 +317,11 @@ export default function EditLeadPage() {
     setSaving(true);
 
     try {
-      const supabase = supabaseBrowser();
+      const supabase = createClient();
 
-      // -----------------------------------------
-      // CHECK LOGIN
-      // -----------------------------------------
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setError(
-          "Your login session has expired. Please login again."
-        );
-        setSaving(false);
-        return;
-      }
-
-      // -----------------------------------------
-      // BUILD FOLLOW-UP TIMESTAMP
-      // -----------------------------------------
+      // --------------------------------------
+      // FOLLOW-UP TIMESTAMP
+      // --------------------------------------
 
       let nextFollowupAt:
         | string
@@ -352,97 +329,99 @@ export default function EditLeadPage() {
 
       if (nextFollowUpDate) {
         const time =
-          nextFollowUpTime || "09:00";
+          nextFollowUpTime ||
+          "09:00";
 
-        const localDate = new Date(
-          `${nextFollowUpDate}T${time}:00`
-        );
+        const date =
+          new Date(
+            `${nextFollowUpDate}T${time}:00`
+          );
 
         if (
           !Number.isNaN(
-            localDate.getTime()
+            date.getTime()
           )
         ) {
           nextFollowupAt =
-            localDate.toISOString();
+            date.toISOString();
         }
       }
 
-      // -----------------------------------------
+      // --------------------------------------
       // UPDATE
-      // -----------------------------------------
+      // --------------------------------------
 
-      const updateData = {
-        customer_name:
-          customerName.trim(),
+      const { error: updateError } =
+        await supabase
+          .from("leads")
+          .update({
+            customer_name:
+              customerName.trim(),
 
-        company_name:
-          companyName.trim() || null,
+            company_name:
+              companyName.trim() ||
+              null,
 
-        phone:
-          phone.trim() || null,
+            phone:
+              phone.trim() || null,
 
-        contact_no:
-          phone.trim() || null,
+            contact_no:
+              phone.trim() || null,
 
-        email:
-          email.trim() || null,
+            email:
+              email.trim() || null,
 
-        email_id:
-          email.trim() || null,
+            email_id:
+              email.trim() || null,
 
-        city:
-          city.trim() || null,
+            city:
+              city.trim() || null,
 
-        state:
-          state.trim() || null,
+            state:
+              state.trim() || null,
 
-        // MANUAL PRODUCT
-        product:
-          product.trim(),
+            // MANUAL PRODUCT
+            product:
+              product.trim(),
 
-        source:
-          source.trim() || null,
+            source:
+              source.trim() || null,
 
-        assigned_agent:
-          assignedAgent || null,
+            assigned_agent:
+              assignedAgent || null,
 
-        assigned_agent_id:
-          assignedAgent || null,
+            assigned_agent_id:
+              assignedAgent || null,
 
-        status,
+            status,
 
-        lead_status:
-          status,
+            lead_status:
+              status,
 
-        remarks:
-          remarks.trim() || null,
+            remarks:
+              remarks.trim() || null,
 
-        notes:
-          remarks.trim() || null,
+            notes:
+              remarks.trim() || null,
 
-        next_followup_at:
-          nextFollowupAt,
+            next_followup_at:
+              nextFollowupAt,
 
-        next_follow_up_date:
-          nextFollowUpDate || null,
+            next_follow_up_date:
+              nextFollowUpDate ||
+              null,
 
-        next_follow_up_time:
-          nextFollowUpTime || null,
+            next_follow_up_time:
+              nextFollowUpTime ||
+              null,
 
-        reminder_enabled:
-          reminderEnabled,
+            reminder_enabled:
+              reminderEnabled,
 
-        updated_at:
-          new Date().toISOString(),
-      };
-
-      const {
-        error: updateError,
-      } = await supabase
-        .from("leads")
-        .update(updateData)
-        .eq("id", leadId);
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", id);
 
       if (updateError) {
         throw new Error(
@@ -454,27 +433,27 @@ export default function EditLeadPage() {
         "Lead updated successfully."
       );
 
-      // Go back to Leads after short delay
       setTimeout(() => {
         router.push(
           "/dashboard/leads"
         );
+
         router.refresh();
-      }, 500);
+      }, 700);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Something went wrong while updating the lead."
+          : "Unable to update lead."
       );
 
       setSaving(false);
     }
   }
 
-  // -----------------------------------------
+  // ----------------------------------------
   // LOADING
-  // -----------------------------------------
+  // ----------------------------------------
 
   if (loading) {
     return (
@@ -485,15 +464,9 @@ export default function EditLeadPage() {
           className="card"
           style={{
             marginTop: 20,
-            padding: 25,
           }}
         >
-          <p
-            style={{
-              margin: 0,
-              color: "#475569",
-            }}
-          >
+          <p>
             Loading lead...
           </p>
         </div>
@@ -501,9 +474,9 @@ export default function EditLeadPage() {
     );
   }
 
-  // -----------------------------------------
-  // ERROR BEFORE FORM
-  // -----------------------------------------
+  // ----------------------------------------
+  // ERROR
+  // ----------------------------------------
 
   if (error && !customerName) {
     return (
@@ -517,13 +490,13 @@ export default function EditLeadPage() {
             marginBottom: 25,
           }}
         >
-          <div>
-            <h1>Edit Lead</h1>
-          </div>
+          <h1>
+            Edit Lead
+          </h1>
 
           <button
-            type="button"
             className="btn"
+            type="button"
             onClick={() =>
               router.push(
                 "/dashboard/leads"
@@ -538,31 +511,30 @@ export default function EditLeadPage() {
           style={{
             padding: 20,
             borderRadius: 10,
-            background: "#fee2e2",
-            color: "#b91c1c",
-            border:
-              "1px solid #fecaca",
+            background:
+              "#fee2e2",
+            color: "#991b1b",
           }}
         >
           <strong>
-            Error loading lead
+            Unable to load lead
           </strong>
 
-          <p
-            style={{
-              marginBottom: 0,
-            }}
-          >
+          <p>
             {error}
           </p>
+
+          <small>
+            Lead ID: {id || "missing"}
+          </small>
         </div>
       </div>
     );
   }
 
-  // -----------------------------------------
+  // ----------------------------------------
   // FORM
-  // -----------------------------------------
+  // ----------------------------------------
 
   return (
     <div>
@@ -575,21 +547,15 @@ export default function EditLeadPage() {
             "space-between",
           alignItems: "center",
           marginBottom: 25,
-          gap: 15,
         }}
       >
         <div>
-          <h1
-            style={{
-              marginBottom: 5,
-            }}
-          >
+          <h1>
             Edit Lead
           </h1>
 
           <p
             style={{
-              margin: 0,
               color: "#64748b",
             }}
           >
@@ -599,8 +565,8 @@ export default function EditLeadPage() {
         </div>
 
         <button
-          type="button"
           className="btn"
+          type="button"
           onClick={() =>
             router.push(
               "/dashboard/leads"
@@ -637,13 +603,14 @@ export default function EditLeadPage() {
 
               <input
                 className="input"
-                value={customerName}
+                value={
+                  customerName
+                }
                 onChange={(e) =>
                   setCustomerName(
                     e.target.value
                   )
                 }
-                placeholder="Customer name"
                 required
               />
             </div>
@@ -655,13 +622,14 @@ export default function EditLeadPage() {
 
               <input
                 className="input"
-                value={companyName}
+                value={
+                  companyName
+                }
                 onChange={(e) =>
                   setCompanyName(
                     e.target.value
                   )
                 }
-                placeholder="Company name"
               />
             </div>
 
@@ -696,7 +664,6 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
-                placeholder="customer@email.com"
               />
             </div>
 
@@ -713,7 +680,6 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
-                placeholder="City"
               />
             </div>
 
@@ -730,7 +696,6 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
-                placeholder="State"
               />
             </div>
           </div>
@@ -744,7 +709,9 @@ export default function EditLeadPage() {
             marginTop: 20,
           }}
         >
-          <h2>Product</h2>
+          <h2>
+            Product
+          </h2>
 
           <div className="field">
             <label>
@@ -765,15 +732,13 @@ export default function EditLeadPage() {
 
             <p
               style={{
-                marginTop: 7,
                 color: "#64748b",
                 fontSize: 14,
               }}
             >
-              Product is a manual text
-              field. You can change it
-              anytime. Auto-imported leads
-              can also fill this field.
+              Manual product entry.
+              You can change the
+              product anytime.
             </p>
           </div>
         </div>
@@ -822,7 +787,9 @@ export default function EditLeadPage() {
 
               <select
                 className="input"
-                value={assignedAgent}
+                value={
+                  assignedAgent
+                }
                 onChange={(e) =>
                   setAssignedAgent(
                     e.target.value
@@ -836,15 +803,16 @@ export default function EditLeadPage() {
                 {agents.map(
                   (agent) => (
                     <option
-                      key={agent.id}
-                      value={agent.id}
+                      key={
+                        agent.id
+                      }
+                      value={
+                        agent.id
+                      }
                     >
                       {
                         agent.agent_name
                       }
-                      {!agent.is_active
-                        ? " (Inactive)"
-                        : ""}
                     </option>
                   )
                 )}
@@ -956,8 +924,9 @@ export default function EditLeadPage() {
             style={{
               marginTop: 20,
               display: "flex",
-              alignItems: "center",
               gap: 10,
+              alignItems:
+                "center",
             }}
           >
             <input
@@ -993,6 +962,7 @@ export default function EditLeadPage() {
 
           <textarea
             className="input"
+            rows={5}
             value={remarks}
             onChange={(e) =>
               setRemarks(
@@ -1000,10 +970,6 @@ export default function EditLeadPage() {
               )
             }
             placeholder="Enter remarks, requirements, conversation notes..."
-            rows={5}
-            style={{
-              resize: "vertical",
-            }}
           />
         </div>
 
@@ -1017,7 +983,7 @@ export default function EditLeadPage() {
               borderRadius: 8,
               background:
                 "#fee2e2",
-              color: "#b91c1c",
+              color: "#991b1b",
             }}
           >
             {error}
@@ -1052,8 +1018,8 @@ export default function EditLeadPage() {
           }}
         >
           <button
-            type="submit"
             className="btn"
+            type="submit"
             disabled={saving}
           >
             {saving
@@ -1062,8 +1028,9 @@ export default function EditLeadPage() {
           </button>
 
           <button
-            type="button"
             className="btn"
+            type="button"
+            disabled={saving}
             style={{
               background:
                 "#e2e8f0",
@@ -1074,7 +1041,6 @@ export default function EditLeadPage() {
                 "/dashboard/leads"
               )
             }
-            disabled={saving}
           >
             Cancel
           </button>
