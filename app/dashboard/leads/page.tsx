@@ -4,13 +4,11 @@ import { createClient } from "@/lib/supabase-server";
 export default async function Leads() {
   const sb = await createClient();
 
-  // Get leads without relying on a Supabase relationship
   const { data: leads, error: leadsError } = await sb
     .from("leads")
     .select("*")
     .order("created_at", { ascending: false });
 
-  // Get active agents separately
   const { data: agents, error: agentsError } = await sb
     .from("agent_profiles")
     .select("id, agent_name, is_active")
@@ -20,8 +18,7 @@ export default async function Leads() {
   if (leadsError) {
     return (
       <main style={{ padding: 30 }}>
-        <h1>Leads</h1>
-
+        <h1>Lead Management</h1>
         <p style={{ color: "red" }}>
           Error loading leads: {leadsError.message}
         </p>
@@ -32,8 +29,7 @@ export default async function Leads() {
   if (agentsError) {
     return (
       <main style={{ padding: 30 }}>
-        <h1>Leads</h1>
-
+        <h1>Lead Management</h1>
         <p style={{ color: "red" }}>
           Error loading agents: {agentsError.message}
         </p>
@@ -41,7 +37,6 @@ export default async function Leads() {
     );
   }
 
-  // Create agent lookup
   const agentMap = new Map(
     (agents ?? []).map((agent: any) => [
       agent.id,
@@ -49,8 +44,15 @@ export default async function Leads() {
     ])
   );
 
+  const followupCount = (leads ?? []).filter(
+    (lead: any) =>
+      lead.next_followup_at ||
+      lead.next_follow_up_date
+  ).length;
+
   return (
     <main style={{ padding: 30 }}>
+
       {/* HEADER */}
       <div
         style={{
@@ -63,10 +65,18 @@ export default async function Leads() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>Lead Management</h1>
+          <h1 style={{ margin: 0 }}>
+            Lead Management
+          </h1>
 
-          <p style={{ color: "#666", marginTop: 6 }}>
-            Manage leads, agents and follow-ups
+          <p
+            style={{
+              color: "#666",
+              marginTop: 6,
+              marginBottom: 0,
+            }}
+          >
+            Manage leads, products, agents and follow-ups
           </p>
         </div>
 
@@ -77,15 +87,24 @@ export default async function Leads() {
             flexWrap: "wrap",
           }}
         >
-          <Link className="btn" href="/dashboard/leads/import">
+          <Link
+            className="btn"
+            href="/dashboard/leads/import"
+          >
             Import Excel
           </Link>
 
-          <Link className="btn" href="/dashboard/leads/export">
+          <Link
+            className="btn"
+            href="/dashboard/leads/export"
+          >
             Export Excel
           </Link>
 
-          <Link className="btn" href="/dashboard/leads/new">
+          <Link
+            className="btn"
+            href="/dashboard/leads/new"
+          >
             + New Lead
           </Link>
         </div>
@@ -109,7 +128,9 @@ export default async function Leads() {
             background: "#fff",
           }}
         >
-          <div style={{ color: "#666" }}>Total Leads</div>
+          <div style={{ color: "#666" }}>
+            Total Leads
+          </div>
 
           <strong style={{ fontSize: 26 }}>
             {leads?.length ?? 0}
@@ -124,7 +145,9 @@ export default async function Leads() {
             background: "#fff",
           }}
         >
-          <div style={{ color: "#666" }}>Active Agents</div>
+          <div style={{ color: "#666" }}>
+            Active Agents
+          </div>
 
           <strong style={{ fontSize: 26 }}>
             {agents?.length ?? 0}
@@ -139,18 +162,23 @@ export default async function Leads() {
             background: "#fff",
           }}
         >
-          <div style={{ color: "#666" }}>Follow-ups</div>
+          <div style={{ color: "#666" }}>
+            Follow-ups
+          </div>
 
           <strong style={{ fontSize: 26 }}>
-            {(leads ?? []).filter(
-              (lead: any) => lead.next_followup_at
-            ).length}
+            {followupCount}
           </strong>
         </div>
       </div>
 
-      {/* LEADS TABLE */}
-      <div className="tablewrap">
+      {/* TABLE */}
+      <div
+        className="tablewrap"
+        style={{
+          overflowX: "auto",
+        }}
+      >
         <table className="table">
           <thead>
             <tr>
@@ -163,57 +191,90 @@ export default async function Leads() {
               <th>Status</th>
               <th>Next Follow-up</th>
               <th>Reminder</th>
+              <th>Action</th>
             </tr>
           </thead>
 
           <tbody>
             {(leads ?? []).map((lead: any) => {
-              const followup = lead.next_followup_at
-                ? new Date(lead.next_followup_at)
-                : null;
+
+              let followup: Date | null = null;
+
+              if (lead.next_followup_at) {
+                followup = new Date(
+                  lead.next_followup_at
+                );
+              } else if (
+                lead.next_follow_up_date
+              ) {
+                const time =
+                  lead.next_follow_up_time ||
+                  "09:00:00";
+
+                followup = new Date(
+                  `${lead.next_follow_up_date}T${time}`
+                );
+              }
 
               const isOverdue =
                 followup !== null &&
                 followup.getTime() < Date.now();
 
-              const agentName =
-                lead.assigned_agent
-                  ? agentMap.get(lead.assigned_agent) ??
-                    "Unknown Agent"
-                  : "Unassigned";
+              const agentId =
+                lead.assigned_agent_id ||
+                lead.assigned_agent;
+
+              const agentName = agentId
+                ? agentMap.get(agentId) ??
+                  "Unknown Agent"
+                : "Unassigned";
+
+              const currentStatus =
+                lead.lead_status ||
+                lead.status ||
+                "new";
 
               return (
                 <tr key={lead.id}>
+
                   {/* CUSTOMER */}
                   <td>
                     <strong>
-                      {lead.customer_name ?? "-"}
+                      {lead.customer_name || "-"}
                     </strong>
                   </td>
 
                   {/* COMPANY */}
                   <td>
-                    {lead.company_name ?? "-"}
+                    {lead.company_name || "-"}
                   </td>
 
                   {/* PHONE */}
                   <td>
-                    {lead.phone ?? "-"}
+                    {lead.phone ||
+                      lead.contact_no ||
+                      "-"}
                   </td>
 
                   {/* PRODUCT */}
                   <td>
-                    {lead.product ?? "-"}
+                    <strong>
+                      {lead.product ||
+                        lead.product_requirement ||
+                        "-"}
+                    </strong>
                   </td>
 
                   {/* SOURCE */}
                   <td>
-                    {lead.source ?? "manual"}
+                    {lead.source || "Manual"}
                   </td>
 
                   {/* AGENT */}
                   <td>
-                    <strong>{agentName}</strong>
+                    <strong>
+                      {agentName}
+                    </strong>
                   </td>
 
                   {/* STATUS */}
@@ -221,14 +282,14 @@ export default async function Leads() {
                     <span
                       className={
                         "status " +
-                        (lead.status ?? "new")
+                        currentStatus
                       }
                     >
-                      {lead.status ?? "new"}
+                      {currentStatus}
                     </span>
                   </td>
 
-                  {/* NEXT FOLLOW-UP */}
+                  {/* FOLLOW-UP */}
                   <td>
                     {followup ? (
                       <div>
@@ -263,7 +324,7 @@ export default async function Leads() {
 
                   {/* REMINDER */}
                   <td>
-                    {lead.reminder_enabled ? (
+                    {lead.reminder_enabled !== false ? (
                       <span
                         style={{
                           color: "green",
@@ -273,11 +334,34 @@ export default async function Leads() {
                         🔔 ON
                       </span>
                     ) : (
-                      <span style={{ color: "#777" }}>
+                      <span
+                        style={{
+                          color: "#777",
+                        }}
+                      >
                         OFF
                       </span>
                     )}
                   </td>
+
+                  {/* EDIT */}
+                  <td>
+                    <Link
+                      href={`/dashboard/leads/${lead.id}/edit`}
+                      className="btn"
+                      style={{
+                        display: "inline-block",
+                        padding:
+                          "7px 14px",
+                        fontSize: 14,
+                        textDecoration:
+                          "none",
+                      }}
+                    >
+                      Edit
+                    </Link>
+                  </td>
+
                 </tr>
               );
             })}
@@ -285,7 +369,7 @@ export default async function Leads() {
         </table>
       </div>
 
-      {/* EMPTY STATE */}
+      {/* EMPTY */}
       {(leads ?? []).length === 0 && (
         <div
           style={{
