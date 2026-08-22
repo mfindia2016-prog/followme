@@ -1,31 +1,42 @@
 <td>
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-      minWidth: 130,
-    }}
-  >
-    {agentId && agentMap.has(agentId) ? (
-      <>
-        {agents.find(
-          (agent) => agent.id === agentId
-        )?.photo_url ? (
+  {agentName === "Unassigned" ? (
+    <span
+      style={{
+        color: "#94a3b8",
+        fontWeight: 500,
+      }}
+    >
+      Unassigned
+    </span>
+  ) : (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        minWidth: 130,
+      }}
+    >
+      {(() => {
+        const agentId =
+          lead.assigned_agent ||
+          lead.assigned_agent_id;
+
+        const agent = (agents ?? []).find(
+          (a: any) => a.id === agentId
+        );
+
+        return agent?.photo_url ? (
           <img
-            src={
-              agents.find(
-                (agent) =>
-                  agent.id === agentId
-              )?.photo_url ?? ""
-            }
-            alt={agentName}
+            src={agent.photo_url}
+            alt={agent.agent_name}
             style={{
               width: 32,
               height: 32,
               borderRadius: "50%",
               objectFit: "cover",
-              border: "1px solid #ddd",
+              border: "2px solid #e2e8f0",
+              flexShrink: 0,
             }}
           />
         ) : (
@@ -40,26 +51,17 @@
               justifyContent: "center",
               fontWeight: 700,
               color: "#475569",
+              flexShrink: 0,
             }}
           >
             {agentName
               .charAt(0)
               .toUpperCase()}
           </div>
-        )}
+        );
+      })()}
 
-        <strong>
-          {agentName}
-        </strong>
-      </>
-    ) : (
-      <span
-        style={{
-          color: "#94a3b8",
-        }}
-      >
-        Unassigned
-      </span>
-    )}
-  </div>
+      <strong>{agentName}</strong>
+    </div>
+  )}
 </td>
