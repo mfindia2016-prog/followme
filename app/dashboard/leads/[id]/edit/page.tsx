@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase-browser";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type Agent = {
   id: string;
@@ -31,7 +31,8 @@ export default function EditLeadPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
 
-  // MANUAL PRODUCT
+  // Product is manual text.
+  // It can also be filled automatically by imported leads.
   const [product, setProduct] = useState("");
 
   const [source, setSource] = useState("");
@@ -49,59 +50,44 @@ export default function EditLeadPage() {
   const [reminderEnabled, setReminderEnabled] =
     useState(true);
 
+  // --------------------------------------------------
+  // LOAD LEAD
+  // --------------------------------------------------
+
   useEffect(() => {
     async function loadLead() {
       try {
         setLoading(true);
         setError("");
 
-        console.log("EDIT LEAD ID:", id);
-
         if (!id) {
-          throw new Error(
-            "Lead ID is missing from the URL."
-          );
+          throw new Error("Lead ID is missing from the URL.");
         }
 
-        const supabase = createClient();
+        const supabase = supabaseBrowser();
 
-        // ----------------------------------------
-        // LOAD LEAD
-        // ----------------------------------------
-
-        const { data, error: leadError } =
-          await supabase
-            .from("leads")
-            .select("*")
-            .eq("id", id)
-            .single();
-
-        console.log("LEAD DATA:", data);
-        console.log("LEAD ERROR:", leadError);
+        // Load lead
+        const { data, error: leadError } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", id)
+          .single();
 
         if (leadError) {
-          throw new Error(
-            leadError.message
-          );
+          throw new Error(leadError.message);
         }
 
         if (!data) {
-          throw new Error(
-            "Lead not found."
-          );
+          throw new Error("Lead not found.");
         }
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // CUSTOMER
-        // ----------------------------------------
+        // ------------------------------------------------
 
-        setCustomerName(
-          data.customer_name ?? ""
-        );
+        setCustomerName(data.customer_name ?? "");
 
-        setCompanyName(
-          data.company_name ?? ""
-        );
+        setCompanyName(data.company_name ?? "");
 
         setPhone(
           data.phone ??
@@ -115,33 +101,25 @@ export default function EditLeadPage() {
             ""
         );
 
-        setCity(
-          data.city ?? ""
-        );
+        setCity(data.city ?? "");
 
-        setState(
-          data.state ?? ""
-        );
+        setState(data.state ?? "");
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // PRODUCT
-        // ----------------------------------------
+        // ------------------------------------------------
 
-        setProduct(
-          data.product ?? ""
-        );
+        setProduct(data.product ?? "");
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // SOURCE
-        // ----------------------------------------
+        // ------------------------------------------------
 
-        setSource(
-          data.source ?? ""
-        );
+        setSource(data.source ?? "");
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // AGENT
-        // ----------------------------------------
+        // ------------------------------------------------
 
         setAssignedAgent(
           data.assigned_agent ??
@@ -149,9 +127,9 @@ export default function EditLeadPage() {
             ""
         );
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // STATUS
-        // ----------------------------------------
+        // ------------------------------------------------
 
         setStatus(
           data.status ??
@@ -159,9 +137,9 @@ export default function EditLeadPage() {
             "new"
         );
 
-        // ----------------------------------------
-        // NOTES
-        // ----------------------------------------
+        // ------------------------------------------------
+        // REMARKS / NOTES
+        // ------------------------------------------------
 
         setRemarks(
           data.remarks ??
@@ -169,9 +147,9 @@ export default function EditLeadPage() {
             ""
         );
 
-        // ----------------------------------------
-        // FOLLOW UP
-        // ----------------------------------------
+        // ------------------------------------------------
+        // FOLLOW-UP DATE
+        // ------------------------------------------------
 
         if (data.next_follow_up_date) {
           setNextFollowUpDate(
@@ -179,32 +157,33 @@ export default function EditLeadPage() {
           );
         }
 
+        // ------------------------------------------------
+        // FOLLOW-UP TIME
+        // ------------------------------------------------
+
         if (data.next_follow_up_time) {
           setNextFollowUpTime(
-            String(
-              data.next_follow_up_time
-            ).substring(0, 5)
+            String(data.next_follow_up_time).substring(
+              0,
+              5
+            )
           );
         }
 
-        // If old timestamp exists but separate
-        // date/time fields are empty
+        // ------------------------------------------------
+        // OLD TIMESTAMP SUPPORT
+        // ------------------------------------------------
+
         if (
           data.next_followup_at &&
           !data.next_follow_up_date
         ) {
-          const date =
-            new Date(
-              data.next_followup_at
-            );
+          const date = new Date(
+            data.next_followup_at
+          );
 
-          if (
-            !Number.isNaN(
-              date.getTime()
-            )
-          ) {
-            const year =
-              date.getFullYear();
+          if (!Number.isNaN(date.getTime())) {
+            const year = date.getFullYear();
 
             const month = String(
               date.getMonth() + 1
@@ -232,17 +211,17 @@ export default function EditLeadPage() {
           }
         }
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // REMINDER
-        // ----------------------------------------
+        // ------------------------------------------------
 
         setReminderEnabled(
           data.reminder_enabled !== false
         );
 
-        // ----------------------------------------
+        // ------------------------------------------------
         // LOAD AGENTS
-        // ----------------------------------------
+        // ------------------------------------------------
 
         const {
           data: agentData,
@@ -256,22 +235,21 @@ export default function EditLeadPage() {
             ascending: true,
           });
 
-        if (agentError) {
+        if (!agentError) {
+          setAgents(
+            (agentData ?? []) as Agent[]
+          );
+        } else {
           console.error(
             "Agent loading error:",
             agentError
-          );
-        } else {
-          setAgents(
-            (agentData ??
-              []) as Agent[]
           );
         }
 
         setLoading(false);
       } catch (err) {
         console.error(
-          "EDIT PAGE ERROR:",
+          "EDIT LEAD ERROR:",
           err
         );
 
@@ -288,9 +266,9 @@ export default function EditLeadPage() {
     loadLead();
   }, [id]);
 
-  // ----------------------------------------
-  // SAVE
-  // ----------------------------------------
+  // --------------------------------------------------
+  // SAVE / UPDATE LEAD
+  // --------------------------------------------------
 
   async function handleSubmit(
     e: FormEvent<HTMLFormElement>
@@ -301,55 +279,43 @@ export default function EditLeadPage() {
     setSuccess("");
 
     if (!customerName.trim()) {
-      setError(
-        "Customer Name is required."
-      );
+      setError("Customer Name is required.");
       return;
     }
 
     if (!product.trim()) {
-      setError(
-        "Product Name is required."
-      );
+      setError("Product Name is required.");
       return;
     }
 
     setSaving(true);
 
     try {
-      const supabase = createClient();
+      const supabase = supabaseBrowser();
 
-      // --------------------------------------
-      // FOLLOW-UP TIMESTAMP
-      // --------------------------------------
+      // ------------------------------------------------
+      // CREATE FOLLOW-UP TIMESTAMP
+      // ------------------------------------------------
 
-      let nextFollowupAt:
-        | string
-        | null = null;
+      let nextFollowupAt: string | null = null;
 
       if (nextFollowUpDate) {
         const time =
-          nextFollowUpTime ||
-          "09:00";
+          nextFollowUpTime || "09:00";
 
-        const date =
-          new Date(
-            `${nextFollowUpDate}T${time}:00`
-          );
+        const date = new Date(
+          `${nextFollowUpDate}T${time}:00`
+        );
 
-        if (
-          !Number.isNaN(
-            date.getTime()
-          )
-        ) {
+        if (!Number.isNaN(date.getTime())) {
           nextFollowupAt =
             date.toISOString();
         }
       }
 
-      // --------------------------------------
-      // UPDATE
-      // --------------------------------------
+      // ------------------------------------------------
+      // UPDATE LEAD
+      // ------------------------------------------------
 
       const { error: updateError } =
         await supabase
@@ -359,8 +325,7 @@ export default function EditLeadPage() {
               customerName.trim(),
 
             company_name:
-              companyName.trim() ||
-              null,
+              companyName.trim() || null,
 
             phone:
               phone.trim() || null,
@@ -408,12 +373,10 @@ export default function EditLeadPage() {
               nextFollowupAt,
 
             next_follow_up_date:
-              nextFollowUpDate ||
-              null,
+              nextFollowUpDate || null,
 
             next_follow_up_time:
-              nextFollowUpTime ||
-              null,
+              nextFollowUpTime || null,
 
             reminder_enabled:
               reminderEnabled,
@@ -433,14 +396,18 @@ export default function EditLeadPage() {
         "Lead updated successfully."
       );
 
-      setTimeout(() => {
-        router.push(
-          "/dashboard/leads"
-        );
+      setSaving(false);
 
+      setTimeout(() => {
+        router.push("/dashboard/leads");
         router.refresh();
       }, 700);
     } catch (err) {
+      console.error(
+        "UPDATE LEAD ERROR:",
+        err
+      );
+
       setError(
         err instanceof Error
           ? err.message
@@ -451,9 +418,9 @@ export default function EditLeadPage() {
     }
   }
 
-  // ----------------------------------------
-  // LOADING
-  // ----------------------------------------
+  // --------------------------------------------------
+  // LOADING SCREEN
+  // --------------------------------------------------
 
   if (loading) {
     return (
@@ -466,17 +433,15 @@ export default function EditLeadPage() {
             marginTop: 20,
           }}
         >
-          <p>
-            Loading lead...
-          </p>
+          <p>Loading lead...</p>
         </div>
       </div>
     );
   }
 
-  // ----------------------------------------
-  // ERROR
-  // ----------------------------------------
+  // --------------------------------------------------
+  // LOAD ERROR
+  // --------------------------------------------------
 
   if (error && !customerName) {
     return (
@@ -484,19 +449,16 @@ export default function EditLeadPage() {
         <div
           style={{
             display: "flex",
-            justifyContent:
-              "space-between",
+            justifyContent: "space-between",
             alignItems: "center",
             marginBottom: 25,
           }}
         >
-          <h1>
-            Edit Lead
-          </h1>
+          <h1>Edit Lead</h1>
 
           <button
-            className="btn"
             type="button"
+            className="btn"
             onClick={() =>
               router.push(
                 "/dashboard/leads"
@@ -511,8 +473,7 @@ export default function EditLeadPage() {
           style={{
             padding: 20,
             borderRadius: 10,
-            background:
-              "#fee2e2",
+            background: "#fee2e2",
             color: "#991b1b",
           }}
         >
@@ -520,9 +481,7 @@ export default function EditLeadPage() {
             Unable to load lead
           </strong>
 
-          <p>
-            {error}
-          </p>
+          <p>{error}</p>
 
           <small>
             Lead ID: {id || "missing"}
@@ -532,9 +491,9 @@ export default function EditLeadPage() {
     );
   }
 
-  // ----------------------------------------
-  // FORM
-  // ----------------------------------------
+  // --------------------------------------------------
+  // EDIT FORM
+  // --------------------------------------------------
 
   return (
     <div>
@@ -543,19 +502,17 @@ export default function EditLeadPage() {
       <div
         style={{
           display: "flex",
-          justifyContent:
-            "space-between",
+          justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 25,
         }}
       >
         <div>
-          <h1>
-            Edit Lead
-          </h1>
+          <h1>Edit Lead</h1>
 
           <p
             style={{
+              margin: 0,
               color: "#64748b",
             }}
           >
@@ -565,28 +522,24 @@ export default function EditLeadPage() {
         </div>
 
         <button
-          className="btn"
           type="button"
+          className="btn"
+          disabled={saving}
           onClick={() =>
             router.push(
               "/dashboard/leads"
             )
           }
-          disabled={saving}
         >
           ← Back
         </button>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-      >
-        {/* CUSTOMER */}
+      <form onSubmit={handleSubmit}>
+        {/* CUSTOMER INFORMATION */}
 
         <div className="card">
-          <h2>
-            Customer Information
-          </h2>
+          <h2>Customer Information</h2>
 
           <div
             style={{
@@ -603,14 +556,13 @@ export default function EditLeadPage() {
 
               <input
                 className="input"
-                value={
-                  customerName
-                }
+                value={customerName}
                 onChange={(e) =>
                   setCustomerName(
                     e.target.value
                   )
                 }
+                placeholder="Customer name"
                 required
               />
             </div>
@@ -622,14 +574,13 @@ export default function EditLeadPage() {
 
               <input
                 className="input"
-                value={
-                  companyName
-                }
+                value={companyName}
                 onChange={(e) =>
                   setCompanyName(
                     e.target.value
                   )
                 }
+                placeholder="Company name"
               />
             </div>
 
@@ -651,9 +602,7 @@ export default function EditLeadPage() {
             </div>
 
             <div className="field">
-              <label>
-                Email
-              </label>
+              <label>Email</label>
 
               <input
                 className="input"
@@ -664,13 +613,12 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
+                placeholder="customer@email.com"
               />
             </div>
 
             <div className="field">
-              <label>
-                City
-              </label>
+              <label>City</label>
 
               <input
                 className="input"
@@ -680,13 +628,12 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
+                placeholder="City"
               />
             </div>
 
             <div className="field">
-              <label>
-                State
-              </label>
+              <label>State</label>
 
               <input
                 className="input"
@@ -696,6 +643,7 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
+                placeholder="State"
               />
             </div>
           </div>
@@ -709,9 +657,7 @@ export default function EditLeadPage() {
             marginTop: 20,
           }}
         >
-          <h2>
-            Product
-          </h2>
+          <h2>Product</h2>
 
           <div className="field">
             <label>
@@ -732,18 +678,20 @@ export default function EditLeadPage() {
 
             <p
               style={{
+                marginTop: 7,
                 color: "#64748b",
                 fontSize: 14,
               }}
             >
-              Manual product entry.
-              You can change the
-              product anytime.
+              Product is a manual text field.
+              You can enter or change the
+              product anytime. Auto-imported
+              leads can also fill this field.
             </p>
           </div>
         </div>
 
-        {/* ASSIGNMENT */}
+        {/* LEAD ASSIGNMENT */}
 
         <div
           className="card"
@@ -751,9 +699,7 @@ export default function EditLeadPage() {
             marginTop: 20,
           }}
         >
-          <h2>
-            Lead Assignment
-          </h2>
+          <h2>Lead Assignment</h2>
 
           <div
             style={{
@@ -764,9 +710,7 @@ export default function EditLeadPage() {
             }}
           >
             <div className="field">
-              <label>
-                Source
-              </label>
+              <label>Source</label>
 
               <input
                 className="input"
@@ -787,9 +731,7 @@ export default function EditLeadPage() {
 
               <select
                 className="input"
-                value={
-                  assignedAgent
-                }
+                value={assignedAgent}
                 onChange={(e) =>
                   setAssignedAgent(
                     e.target.value
@@ -803,16 +745,10 @@ export default function EditLeadPage() {
                 {agents.map(
                   (agent) => (
                     <option
-                      key={
-                        agent.id
-                      }
-                      value={
-                        agent.id
-                      }
+                      key={agent.id}
+                      value={agent.id}
                     >
-                      {
-                        agent.agent_name
-                      }
+                      {agent.agent_name}
                     </option>
                   )
                 )}
@@ -820,9 +756,7 @@ export default function EditLeadPage() {
             </div>
 
             <div className="field">
-              <label>
-                Status
-              </label>
+              <label>Status</label>
 
               <select
                 className="input"
@@ -861,7 +795,7 @@ export default function EditLeadPage() {
           </div>
         </div>
 
-        {/* FOLLOW UP */}
+        {/* NEXT FOLLOW-UP */}
 
         <div
           className="card"
@@ -869,9 +803,7 @@ export default function EditLeadPage() {
             marginTop: 20,
           }}
         >
-          <h2>
-            Next Follow-up
-          </h2>
+          <h2>Next Follow-up</h2>
 
           <div
             style={{
@@ -924,9 +856,8 @@ export default function EditLeadPage() {
             style={{
               marginTop: 20,
               display: "flex",
+              alignItems: "center",
               gap: 10,
-              alignItems:
-                "center",
             }}
           >
             <input
@@ -948,7 +879,7 @@ export default function EditLeadPage() {
           </div>
         </div>
 
-        {/* NOTES */}
+        {/* REMARKS */}
 
         <div
           className="card"
@@ -970,6 +901,9 @@ export default function EditLeadPage() {
               )
             }
             placeholder="Enter remarks, requirements, conversation notes..."
+            style={{
+              resize: "vertical",
+            }}
           />
         </div>
 
@@ -981,9 +915,8 @@ export default function EditLeadPage() {
               marginTop: 20,
               padding: 15,
               borderRadius: 8,
-              background:
-                "#fee2e2",
-              color: "#991b1b",
+              background: "#fee2e2",
+              color: "#b91c1c",
             }}
           >
             {error}
@@ -998,8 +931,7 @@ export default function EditLeadPage() {
               marginTop: 20,
               padding: 15,
               borderRadius: 8,
-              background:
-                "#dcfce7",
+              background: "#dcfce7",
               color: "#166534",
             }}
           >
@@ -1018,8 +950,8 @@ export default function EditLeadPage() {
           }}
         >
           <button
-            className="btn"
             type="submit"
+            className="btn"
             disabled={saving}
           >
             {saving
@@ -1028,12 +960,11 @@ export default function EditLeadPage() {
           </button>
 
           <button
-            className="btn"
             type="button"
+            className="btn"
             disabled={saving}
             style={{
-              background:
-                "#e2e8f0",
+              background: "#e2e8f0",
               color: "#0f172a",
             }}
             onClick={() =>
