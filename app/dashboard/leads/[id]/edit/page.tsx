@@ -22,15 +22,20 @@ type Lead = {
   state: string | null;
   product: string | null;
   source: string | null;
+
   assigned_agent: string | null;
   assigned_agent_id: string | null;
+
   status: string | null;
   lead_status: string | null;
+
   remarks: string | null;
   notes: string | null;
+
   next_followup_at: string | null;
   next_follow_up_date: string | null;
   next_follow_up_time: string | null;
+
   reminder_enabled: boolean | null;
 };
 
@@ -39,19 +44,19 @@ export default function EditLeadPage() {
   const params = useParams();
 
   const leadId =
-    typeof params.id === "string" ? params.id : "";
-
-  const [supabase] = useState(() => supabaseBrowser());
+    typeof params?.id === "string"
+      ? params.id
+      : Array.isArray(params?.id)
+      ? params.id[0]
+      : "";
 
   const [loading, setLoading] = useState(true);
-  const [loadingAgents, setLoadingAgents] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [lead, setLead] = useState<Lead | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
-
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [agents, setAgents] = useState<Agent[]>([]);
 
   const [customerName, setCustomerName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -60,195 +65,234 @@ export default function EditLeadPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
 
+  // MANUAL PRODUCT TEXT
   const [product, setProduct] = useState("");
 
   const [source, setSource] = useState("");
   const [assignedAgent, setAssignedAgent] = useState("");
-  const [status, setStatus] = useState("new");
 
+  const [status, setStatus] = useState("new");
   const [remarks, setRemarks] = useState("");
 
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [nextFollowUpTime, setNextFollowUpTime] = useState("");
 
-  const [reminderEnabled, setReminderEnabled] = useState(true);
-
-  // --------------------------------------------------
-  // LOAD LEAD
-  // --------------------------------------------------
+  const [reminderEnabled, setReminderEnabled] =
+    useState(true);
 
   useEffect(() => {
-    async function loadLead() {
-      if (!leadId) {
-        setError("Lead ID is missing.");
-        setLoading(false);
-        return;
-      }
+    let cancelled = false;
 
+    async function loadData() {
       setLoading(true);
       setError("");
 
-      const { data, error: fetchError } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("id", leadId)
-        .single();
-
-      if (fetchError) {
-        setError(
-          "Error loading lead: " + fetchError.message
-        );
+      if (!leadId) {
+        setError("Lead ID is missing from the URL.");
         setLoading(false);
         return;
       }
 
-      if (!data) {
-        setError("Lead not found.");
-        setLoading(false);
-        return;
-      }
+      try {
+        const supabase = supabaseBrowser();
 
-      const currentLead = data as Lead;
+        // -----------------------------------------
+        // LOAD LEAD
+        // -----------------------------------------
 
-      setLead(currentLead);
+        const {
+          data: lead,
+          error: leadError,
+        } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", leadId)
+          .maybeSingle();
 
-      setCustomerName(currentLead.customer_name || "");
-      setCompanyName(currentLead.company_name || "");
-
-      setPhone(
-        currentLead.phone ||
-          currentLead.contact_no ||
-          ""
-      );
-
-      setEmail(
-        currentLead.email ||
-          currentLead.email_id ||
-          ""
-      );
-
-      setCity(currentLead.city || "");
-      setState(currentLead.state || "");
-
-      setProduct(currentLead.product || "");
-
-      setSource(currentLead.source || "");
-
-      setAssignedAgent(
-        currentLead.assigned_agent_id ||
-          currentLead.assigned_agent ||
-          ""
-      );
-
-      setStatus(
-        currentLead.status ||
-          currentLead.lead_status ||
-          "new"
-      );
-
-      setRemarks(
-        currentLead.remarks ||
-          currentLead.notes ||
-          ""
-      );
-
-      setReminderEnabled(
-        currentLead.reminder_enabled !== false
-      );
-
-      if (currentLead.next_follow_up_date) {
-        setNextFollowUpDate(
-          currentLead.next_follow_up_date
-        );
-      }
-
-      if (currentLead.next_follow_up_time) {
-        setNextFollowUpTime(
-          String(currentLead.next_follow_up_time).slice(
-            0,
-            5
-          )
-        );
-      }
-
-      if (
-        !currentLead.next_follow_up_date &&
-        currentLead.next_followup_at
-      ) {
-        const date = new Date(
-          currentLead.next_followup_at
-        );
-
-        if (!Number.isNaN(date.getTime())) {
-          const year = date.getFullYear();
-
-          const month = String(
-            date.getMonth() + 1
-          ).padStart(2, "0");
-
-          const day = String(
-            date.getDate()
-          ).padStart(2, "0");
-
-          const hours = String(
-            date.getHours()
-          ).padStart(2, "0");
-
-          const minutes = String(
-            date.getMinutes()
-          ).padStart(2, "0");
-
-          setNextFollowUpDate(
-            `${year}-${month}-${day}`
-          );
-
-          setNextFollowUpTime(
-            `${hours}:${minutes}`
+        if (leadError) {
+          throw new Error(
+            `Unable to load lead: ${leadError.message}`
           );
         }
-      }
 
-      setLoading(false);
-    }
+        if (!lead) {
+          throw new Error(
+            "Lead not found. Please return to Leads and try again."
+          );
+        }
 
-    loadLead();
-  }, [leadId, supabase]);
+        // -----------------------------------------
+        // LOAD AGENTS
+        // -----------------------------------------
 
-  // --------------------------------------------------
-  // LOAD AGENTS
-  // --------------------------------------------------
-
-  useEffect(() => {
-    async function loadAgents() {
-      setLoadingAgents(true);
-
-      const { data, error: agentsError } =
-        await supabase
+        const {
+          data: agentData,
+          error: agentError,
+        } = await supabase
           .from("agent_profiles")
           .select("id, agent_name, is_active")
-          .eq("is_active", true)
           .order("agent_name", {
             ascending: true,
           });
 
-      if (agentsError) {
-        setError(
-          "Error loading agents: " +
-            agentsError.message
-        );
-      } else {
-        setAgents((data || []) as Agent[]);
-      }
+        if (agentError) {
+          throw new Error(
+            `Unable to load agents: ${agentError.message}`
+          );
+        }
 
-      setLoadingAgents(false);
+        if (cancelled) return;
+
+        // -----------------------------------------
+        // SET AGENTS
+        // -----------------------------------------
+
+        setAgents((agentData ?? []) as Agent[]);
+
+        // -----------------------------------------
+        // SET CUSTOMER INFORMATION
+        // -----------------------------------------
+
+        setCustomerName(lead.customer_name ?? "");
+        setCompanyName(lead.company_name ?? "");
+
+        setPhone(
+          lead.phone ??
+            lead.contact_no ??
+            ""
+        );
+
+        setEmail(
+          lead.email ??
+            lead.email_id ??
+            ""
+        );
+
+        setCity(lead.city ?? "");
+        setState(lead.state ?? "");
+
+        // -----------------------------------------
+        // PRODUCT
+        // -----------------------------------------
+
+        setProduct(lead.product ?? "");
+
+        // -----------------------------------------
+        // SOURCE
+        // -----------------------------------------
+
+        setSource(lead.source ?? "");
+
+        // -----------------------------------------
+        // AGENT
+        // -----------------------------------------
+
+        setAssignedAgent(
+          lead.assigned_agent ??
+            lead.assigned_agent_id ??
+            ""
+        );
+
+        // -----------------------------------------
+        // STATUS
+        // -----------------------------------------
+
+        setStatus(
+          lead.status ??
+            lead.lead_status ??
+            "new"
+        );
+
+        // -----------------------------------------
+        // NOTES
+        // -----------------------------------------
+
+        setRemarks(
+          lead.remarks ??
+            lead.notes ??
+            ""
+        );
+
+        // -----------------------------------------
+        // FOLLOW-UP DATE/TIME
+        // -----------------------------------------
+
+        if (lead.next_follow_up_date) {
+          setNextFollowUpDate(
+            lead.next_follow_up_date
+          );
+        } else if (lead.next_followup_at) {
+          const d = new Date(
+            lead.next_followup_at
+          );
+
+          if (!Number.isNaN(d.getTime())) {
+            const year = d.getFullYear();
+            const month = String(
+              d.getMonth() + 1
+            ).padStart(2, "0");
+            const day = String(
+              d.getDate()
+            ).padStart(2, "0");
+
+            setNextFollowUpDate(
+              `${year}-${month}-${day}`
+            );
+
+            const hours = String(
+              d.getHours()
+            ).padStart(2, "0");
+
+            const minutes = String(
+              d.getMinutes()
+            ).padStart(2, "0");
+
+            setNextFollowUpTime(
+              `${hours}:${minutes}`
+            );
+          }
+        }
+
+        if (lead.next_follow_up_time) {
+          setNextFollowUpTime(
+            String(
+              lead.next_follow_up_time
+            ).substring(0, 5)
+          );
+        }
+
+        // -----------------------------------------
+        // REMINDER
+        // -----------------------------------------
+
+        setReminderEnabled(
+          lead.reminder_enabled !== false
+        );
+
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load lead."
+        );
+
+        setLoading(false);
+      }
     }
 
-    loadAgents();
-  }, [supabase]);
+    loadData();
 
-  // --------------------------------------------------
-  // UPDATE LEAD
-  // --------------------------------------------------
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
+
+  // -----------------------------------------
+  // SAVE LEAD
+  // -----------------------------------------
 
   async function handleSubmit(
     e: FormEvent<HTMLFormElement>
@@ -256,7 +300,7 @@ export default function EditLeadPage() {
     e.preventDefault();
 
     setError("");
-    setMessage("");
+    setSuccess("");
 
     if (!leadId) {
       setError("Lead ID is missing.");
@@ -264,35 +308,73 @@ export default function EditLeadPage() {
     }
 
     if (!customerName.trim()) {
-      setError("Customer Name is required.");
+      setError(
+        "Customer Name is required."
+      );
       return;
     }
 
     if (!product.trim()) {
-      setError("Product Name is required.");
+      setError(
+        "Product Name is required."
+      );
       return;
     }
 
     setSaving(true);
 
     try {
-      let nextFollowupAt: string | null = null;
+      const supabase = supabaseBrowser();
+
+      // -----------------------------------------
+      // CHECK LOGIN
+      // -----------------------------------------
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setError(
+          "Your login session has expired. Please login again."
+        );
+        setSaving(false);
+        return;
+      }
+
+      // -----------------------------------------
+      // BUILD FOLLOW-UP TIMESTAMP
+      // -----------------------------------------
+
+      let nextFollowupAt:
+        | string
+        | null = null;
 
       if (nextFollowUpDate) {
-        const time = nextFollowUpTime || "09:00";
+        const time =
+          nextFollowUpTime || "09:00";
 
         const localDate = new Date(
           `${nextFollowUpDate}T${time}:00`
         );
 
-        if (!Number.isNaN(localDate.getTime())) {
+        if (
+          !Number.isNaN(
+            localDate.getTime()
+          )
+        ) {
           nextFollowupAt =
             localDate.toISOString();
         }
       }
 
+      // -----------------------------------------
+      // UPDATE
+      // -----------------------------------------
+
       const updateData = {
-        customer_name: customerName.trim(),
+        customer_name:
+          customerName.trim(),
 
         company_name:
           companyName.trim() || null,
@@ -309,14 +391,15 @@ export default function EditLeadPage() {
         email_id:
           email.trim() || null,
 
-        // MANUAL PRODUCT
-        product: product.trim(),
-
         city:
           city.trim() || null,
 
         state:
           state.trim() || null,
+
+        // MANUAL PRODUCT
+        product:
+          product.trim(),
 
         source:
           source.trim() || null,
@@ -327,9 +410,10 @@ export default function EditLeadPage() {
         assigned_agent_id:
           assignedAgent || null,
 
-        status: status,
+        status,
 
-        lead_status: status,
+        lead_status:
+          status,
 
         remarks:
           remarks.trim() || null,
@@ -353,32 +437,30 @@ export default function EditLeadPage() {
           new Date().toISOString(),
       };
 
-      const { error: updateError } =
-        await supabase
-          .from("leads")
-          .update(updateData)
-          .eq("id", leadId);
+      const {
+        error: updateError,
+      } = await supabase
+        .from("leads")
+        .update(updateData)
+        .eq("id", leadId);
 
       if (updateError) {
-        setError(
-          "Failed to update lead: " +
-            updateError.message
+        throw new Error(
+          updateError.message
         );
-
-        setSaving(false);
-        return;
       }
 
-      setMessage(
+      setSuccess(
         "Lead updated successfully."
       );
 
-      setSaving(false);
-
+      // Go back to Leads after short delay
       setTimeout(() => {
-        router.push("/dashboard/leads");
+        router.push(
+          "/dashboard/leads"
+        );
         router.refresh();
-      }, 700);
+      }, 500);
     } catch (err) {
       setError(
         err instanceof Error
@@ -390,95 +472,124 @@ export default function EditLeadPage() {
     }
   }
 
-  // --------------------------------------------------
-  // LOADING SCREEN
-  // --------------------------------------------------
+  // -----------------------------------------
+  // LOADING
+  // -----------------------------------------
 
   if (loading) {
     return (
-      <main style={{ padding: 30 }}>
-        <h1>Edit Lead</h1>
-
-        <p>Loading lead...</p>
-
-        {error && (
-          <div
-            style={{
-              marginTop: 15,
-              padding: 15,
-              borderRadius: 8,
-              background: "#fee2e2",
-              color: "#b91c1c",
-            }}
-          >
-            {error}
-          </div>
-        )}
-      </main>
-    );
-  }
-
-  // --------------------------------------------------
-  // NOT FOUND
-  // --------------------------------------------------
-
-  if (!lead) {
-    return (
-      <main style={{ padding: 30 }}>
+      <div>
         <h1>Edit Lead</h1>
 
         <div
+          className="card"
           style={{
             marginTop: 20,
-            padding: 15,
-            borderRadius: 8,
-            background: "#fee2e2",
-            color: "#b91c1c",
+            padding: 25,
           }}
         >
-          {error || "Lead not found."}
+          <p
+            style={{
+              margin: 0,
+              color: "#475569",
+            }}
+          >
+            Loading lead...
+          </p>
         </div>
-
-        <button
-          type="button"
-          className="btn"
-          style={{ marginTop: 20 }}
-          onClick={() =>
-            router.push("/dashboard/leads")
-          }
-        >
-          ← Back to Leads
-        </button>
-      </main>
+      </div>
     );
   }
 
-  // --------------------------------------------------
-  // EDIT PAGE
-  // --------------------------------------------------
+  // -----------------------------------------
+  // ERROR BEFORE FORM
+  // -----------------------------------------
+
+  if (error && !customerName) {
+    return (
+      <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent:
+              "space-between",
+            alignItems: "center",
+            marginBottom: 25,
+          }}
+        >
+          <div>
+            <h1>Edit Lead</h1>
+          </div>
+
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              router.push(
+                "/dashboard/leads"
+              )
+            }
+          >
+            ← Back
+          </button>
+        </div>
+
+        <div
+          style={{
+            padding: 20,
+            borderRadius: 10,
+            background: "#fee2e2",
+            color: "#b91c1c",
+            border:
+              "1px solid #fecaca",
+          }}
+        >
+          <strong>
+            Error loading lead
+          </strong>
+
+          <p
+            style={{
+              marginBottom: 0,
+            }}
+          >
+            {error}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // -----------------------------------------
+  // FORM
+  // -----------------------------------------
 
   return (
-    <main style={{ padding: 30 }}>
+    <div>
       {/* HEADER */}
 
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           alignItems: "center",
           marginBottom: 25,
           gap: 15,
-          flexWrap: "wrap",
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>
+          <h1
+            style={{
+              marginBottom: 5,
+            }}
+          >
             Edit Lead
           </h1>
 
           <p
             style={{
-              marginTop: 6,
+              margin: 0,
               color: "#64748b",
             }}
           >
@@ -491,15 +602,20 @@ export default function EditLeadPage() {
           type="button"
           className="btn"
           onClick={() =>
-            router.push("/dashboard/leads")
+            router.push(
+              "/dashboard/leads"
+            )
           }
+          disabled={saving}
         >
           ← Back
         </button>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        {/* CUSTOMER INFORMATION */}
+      <form
+        onSubmit={handleSubmit}
+      >
+        {/* CUSTOMER */}
 
         <div className="card">
           <h2>
@@ -558,7 +674,9 @@ export default function EditLeadPage() {
                 className="input"
                 value={phone}
                 onChange={(e) =>
-                  setPhone(e.target.value)
+                  setPhone(
+                    e.target.value
+                  )
                 }
                 placeholder="+91XXXXXXXXXX"
               />
@@ -574,7 +692,9 @@ export default function EditLeadPage() {
                 type="email"
                 value={email}
                 onChange={(e) =>
-                  setEmail(e.target.value)
+                  setEmail(
+                    e.target.value
+                  )
                 }
                 placeholder="customer@email.com"
               />
@@ -589,7 +709,9 @@ export default function EditLeadPage() {
                 className="input"
                 value={city}
                 onChange={(e) =>
-                  setCity(e.target.value)
+                  setCity(
+                    e.target.value
+                  )
                 }
                 placeholder="City"
               />
@@ -604,7 +726,9 @@ export default function EditLeadPage() {
                 className="input"
                 value={state}
                 onChange={(e) =>
-                  setState(e.target.value)
+                  setState(
+                    e.target.value
+                  )
                 }
                 placeholder="State"
               />
@@ -616,7 +740,9 @@ export default function EditLeadPage() {
 
         <div
           className="card"
-          style={{ marginTop: 20 }}
+          style={{
+            marginTop: 20,
+          }}
         >
           <h2>Product</h2>
 
@@ -629,7 +755,9 @@ export default function EditLeadPage() {
               className="input"
               value={product}
               onChange={(e) =>
-                setProduct(e.target.value)
+                setProduct(
+                  e.target.value
+                )
               }
               placeholder="Enter or change product name"
               required
@@ -642,9 +770,10 @@ export default function EditLeadPage() {
                 fontSize: 14,
               }}
             >
-              Product is a manual text field.
-              You can change the product name
-              anytime.
+              Product is a manual text
+              field. You can change it
+              anytime. Auto-imported leads
+              can also fill this field.
             </p>
           </div>
         </div>
@@ -653,7 +782,9 @@ export default function EditLeadPage() {
 
         <div
           className="card"
-          style={{ marginTop: 20 }}
+          style={{
+            marginTop: 20,
+          }}
         >
           <h2>
             Lead Assignment
@@ -697,22 +828,26 @@ export default function EditLeadPage() {
                     e.target.value
                   )
                 }
-                disabled={loadingAgents}
               >
                 <option value="">
-                  {loadingAgents
-                    ? "Loading agents..."
-                    : "Unassigned"}
+                  Unassigned
                 </option>
 
-                {agents.map((agent) => (
-                  <option
-                    key={agent.id}
-                    value={agent.id}
-                  >
-                    {agent.agent_name}
-                  </option>
-                ))}
+                {agents.map(
+                  (agent) => (
+                    <option
+                      key={agent.id}
+                      value={agent.id}
+                    >
+                      {
+                        agent.agent_name
+                      }
+                      {!agent.is_active
+                        ? " (Inactive)"
+                        : ""}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
@@ -725,7 +860,9 @@ export default function EditLeadPage() {
                 className="input"
                 value={status}
                 onChange={(e) =>
-                  setStatus(e.target.value)
+                  setStatus(
+                    e.target.value
+                  )
                 }
               >
                 <option value="new">
@@ -756,11 +893,13 @@ export default function EditLeadPage() {
           </div>
         </div>
 
-        {/* FOLLOW-UP */}
+        {/* FOLLOW UP */}
 
         <div
           className="card"
-          style={{ marginTop: 20 }}
+          style={{
+            marginTop: 20,
+          }}
         >
           <h2>
             Next Follow-up
@@ -782,7 +921,9 @@ export default function EditLeadPage() {
               <input
                 className="input"
                 type="date"
-                value={nextFollowUpDate}
+                value={
+                  nextFollowUpDate
+                }
                 onChange={(e) =>
                   setNextFollowUpDate(
                     e.target.value
@@ -799,7 +940,9 @@ export default function EditLeadPage() {
               <input
                 className="input"
                 type="time"
-                value={nextFollowUpTime}
+                value={
+                  nextFollowUpTime
+                }
                 onChange={(e) =>
                   setNextFollowUpTime(
                     e.target.value
@@ -820,7 +963,9 @@ export default function EditLeadPage() {
             <input
               type="checkbox"
               id="reminder"
-              checked={reminderEnabled}
+              checked={
+                reminderEnabled
+              }
               onChange={(e) =>
                 setReminderEnabled(
                   e.target.checked
@@ -838,7 +983,9 @@ export default function EditLeadPage() {
 
         <div
           className="card"
-          style={{ marginTop: 20 }}
+          style={{
+            marginTop: 20,
+          }}
         >
           <h2>
             Remarks / Notes
@@ -846,7 +993,6 @@ export default function EditLeadPage() {
 
           <textarea
             className="input"
-            rows={5}
             value={remarks}
             onChange={(e) =>
               setRemarks(
@@ -854,27 +1000,12 @@ export default function EditLeadPage() {
               )
             }
             placeholder="Enter remarks, requirements, conversation notes..."
+            rows={5}
             style={{
               resize: "vertical",
             }}
           />
         </div>
-
-        {/* SUCCESS */}
-
-        {message && (
-          <div
-            style={{
-              marginTop: 20,
-              padding: 15,
-              borderRadius: 8,
-              background: "#dcfce7",
-              color: "#166534",
-            }}
-          >
-            {message}
-          </div>
-        )}
 
         {/* ERROR */}
 
@@ -884,11 +1015,29 @@ export default function EditLeadPage() {
               marginTop: 20,
               padding: 15,
               borderRadius: 8,
-              background: "#fee2e2",
+              background:
+                "#fee2e2",
               color: "#b91c1c",
             }}
           >
             {error}
+          </div>
+        )}
+
+        {/* SUCCESS */}
+
+        {success && (
+          <div
+            style={{
+              marginTop: 20,
+              padding: 15,
+              borderRadius: 8,
+              background:
+                "#dcfce7",
+              color: "#166534",
+            }}
+          >
+            {success}
           </div>
         )}
 
@@ -899,7 +1048,7 @@ export default function EditLeadPage() {
             marginTop: 25,
             display: "flex",
             gap: 12,
-            marginBottom: 40,
+            paddingBottom: 40,
           }}
         >
           <button
@@ -908,7 +1057,7 @@ export default function EditLeadPage() {
             disabled={saving}
           >
             {saving
-              ? "Saving..."
+              ? "Updating..."
               : "Update Lead"}
           </button>
 
@@ -916,7 +1065,8 @@ export default function EditLeadPage() {
             type="button"
             className="btn"
             style={{
-              background: "#e2e8f0",
+              background:
+                "#e2e8f0",
               color: "#0f172a",
             }}
             onClick={() =>
@@ -930,6 +1080,6 @@ export default function EditLeadPage() {
           </button>
         </div>
       </form>
-    </main>
+    </div>
   );
 }
