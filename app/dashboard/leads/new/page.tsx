@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type Agent = {
@@ -26,29 +26,29 @@ const sources = [
   "WhatsApp",
   "Reference",
   "Phone",
+  "Manual",
   "Other",
 ];
 
 export default function NewLeadPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const [leadName, setLeadName] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [city, setCity] = useState("");
 
-  // IMPORTANT:
-  // Product is a free-text field, NOT a dropdown.
+  // Product is FREE TEXT.
+  // No dropdown.
   const [product, setProduct] = useState("");
 
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState("Manual");
   const [agentId, setAgentId] = useState("");
   const [status, setStatus] = useState("new");
   const [remarks, setRemarks] = useState("");
@@ -57,31 +57,22 @@ export default function NewLeadPage() {
   const [followupTime, setFollowupTime] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(true);
 
-  // Allows an external importer to open:
-  // /dashboard/leads/new?product=Patient%20Monitor
-  useEffect(() => {
-    const fetchedProduct = searchParams.get("product");
-
-    if (fetchedProduct) {
-      setProduct(fetchedProduct);
-    }
-  }, [searchParams]);
-
   // Load active agents
   useEffect(() => {
     async function loadAgents() {
       setLoadingAgents(true);
+      setError("");
 
       const sb = supabaseBrowser();
 
-      const { data, error } = await sb
+      const { data, error: agentError } = await sb
         .from("agent_profiles")
         .select("id, agent_name, is_active")
         .eq("is_active", true)
         .order("agent_name", { ascending: true });
 
-      if (error) {
-        setError("Unable to load agents: " + error.message);
+      if (agentError) {
+        setError("Unable to load agents: " + agentError.message);
       } else {
         setAgents((data ?? []) as Agent[]);
       }
@@ -97,8 +88,13 @@ export default function NewLeadPage() {
 
     setError("");
 
-    if (!leadName.trim()) {
+    if (!customerName.trim()) {
       setError("Customer name is required.");
+      return;
+    }
+
+    if (!product.trim()) {
+      setError("Product name is required.");
       return;
     }
 
@@ -113,26 +109,22 @@ export default function NewLeadPage() {
       nextFollowupAt = `${followupDate}T${time}:00`;
     }
 
-    const { error: insertError } = await sb.from("leads").insert({
-      lead_name: leadName.trim(),
-      company_name: companyName.trim() || null,
-      phone: phone.trim() || null,
-      email: email.trim() || null,
-      city: city.trim() || null,
-
-      // Product is saved as normal text.
-      product: product.trim() || null,
-
-      source: source || null,
-
-      // Existing CRM schema uses agent name/text.
-      agent_id: agentId || null,
-
-      status,
-      remarks: remarks.trim() || null,
-      next_followup_at: nextFollowupAt,
-      reminder_enabled: reminderEnabled,
-    });
+    const { error: insertError } = await sb
+      .from("leads")
+      .insert({
+        customer_name: customerName.trim(),
+        company_name: companyName.trim() || null,
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        city: city.trim() || null,
+        product: product.trim(),
+        source: source || "Manual",
+        assigned_agent: agentId || null,
+        status,
+        remarks: remarks.trim() || null,
+        next_followup_at: nextFollowupAt,
+        reminder_enabled: reminderEnabled,
+      });
 
     setSaving(false);
 
@@ -146,19 +138,22 @@ export default function NewLeadPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <main style={{ maxWidth: 1000 }}>
+      {/* HEADER */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 25,
+          gap: 15,
         }}
       >
         <div>
-          <h1 style={{ marginBottom: 5 }}>New Lead</h1>
-          <p style={{ margin: 0, color: "#667085" }}>
-            Add a new customer lead and schedule follow-up.
+          <h1 style={{ margin: 0 }}>New Lead</h1>
+
+          <p style={{ color: "#667085", marginTop: 6 }}>
+            Add customer, product, agent and follow-up details.
           </p>
         </div>
 
@@ -204,16 +199,17 @@ export default function NewLeadPage() {
           </div>
         )}
 
-        {/* CUSTOMER INFORMATION */}
-
-        <h2 style={{ marginBottom: 18 }}>Customer Information</h2>
+        {/* CUSTOMER */}
+        <h2 style={{ marginBottom: 18 }}>
+          Customer Information
+        </h2>
 
         <div style={gridStyle}>
           <Field label="Customer Name *">
             <input
               className="input"
-              value={leadName}
-              onChange={(e) => setLeadName(e.target.value)}
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
               placeholder="Customer name"
               required
             />
@@ -258,15 +254,17 @@ export default function NewLeadPage() {
         </div>
 
         {/* PRODUCT */}
+        <h2 style={{ marginTop: 32, marginBottom: 18 }}>
+          Product
+        </h2>
 
-        <h2 style={{ marginTop: 32, marginBottom: 18 }}>Product</h2>
-
-        <Field label="Product Name">
+        <Field label="Product Name *">
           <input
             className="input"
             value={product}
             onChange={(e) => setProduct(e.target.value)}
-            placeholder="Type product name"
+            placeholder="Type or change product name"
+            required
           />
 
           <div
@@ -276,13 +274,12 @@ export default function NewLeadPage() {
               color: "#667085",
             }}
           >
-            Product is manual text. Imported leads can automatically provide
-            the product name.
+            Manual entry allowed. Auto-imported leads can also fill this
+            field automatically.
           </div>
         </Field>
 
-        {/* LEAD ASSIGNMENT */}
-
+        {/* ASSIGNMENT */}
         <h2 style={{ marginTop: 32, marginBottom: 18 }}>
           Lead Assignment
         </h2>
@@ -294,8 +291,6 @@ export default function NewLeadPage() {
               value={source}
               onChange={(e) => setSource(e.target.value)}
             >
-              <option value="">Select source</option>
-
               {sources.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -312,11 +307,16 @@ export default function NewLeadPage() {
               disabled={loadingAgents}
             >
               <option value="">
-                {loadingAgents ? "Loading agents..." : "Select agent"}
+                {loadingAgents
+                  ? "Loading agents..."
+                  : "Select agent"}
               </option>
 
               {agents.map((agent) => (
-                <option key={agent.id} value={agent.agent_name}>
+                <option
+                  key={agent.id}
+                  value={agent.id}
+                >
                   {agent.agent_name}
                 </option>
               ))}
@@ -339,7 +339,6 @@ export default function NewLeadPage() {
         </div>
 
         {/* FOLLOW-UP */}
-
         <h2 style={{ marginTop: 32, marginBottom: 18 }}>
           Follow-up
         </h2>
@@ -350,7 +349,9 @@ export default function NewLeadPage() {
               className="input"
               type="date"
               value={followupDate}
-              onChange={(e) => setFollowupDate(e.target.value)}
+              onChange={(e) =>
+                setFollowupDate(e.target.value)
+              }
             />
           </Field>
 
@@ -359,7 +360,9 @@ export default function NewLeadPage() {
               className="input"
               type="time"
               value={followupTime}
-              onChange={(e) => setFollowupTime(e.target.value)}
+              onChange={(e) =>
+                setFollowupTime(e.target.value)
+              }
             />
           </Field>
         </div>
@@ -377,7 +380,9 @@ export default function NewLeadPage() {
             <input
               type="checkbox"
               checked={reminderEnabled}
-              onChange={(e) => setReminderEnabled(e.target.checked)}
+              onChange={(e) =>
+                setReminderEnabled(e.target.checked)
+              }
               style={{
                 width: 18,
                 height: 18,
@@ -389,14 +394,15 @@ export default function NewLeadPage() {
         </div>
 
         {/* REMARKS */}
-
-        <h2 style={{ marginTop: 32, marginBottom: 18 }}>Remarks</h2>
+        <h2 style={{ marginTop: 32, marginBottom: 18 }}>
+          Remarks
+        </h2>
 
         <textarea
           className="input"
           value={remarks}
           onChange={(e) => setRemarks(e.target.value)}
-          placeholder="Enter customer requirement, discussion, quotation details, etc."
+          placeholder="Customer requirement, discussion, quotation details, etc."
           rows={5}
           style={{
             width: "100%",
@@ -405,8 +411,7 @@ export default function NewLeadPage() {
           }}
         />
 
-        {/* BUTTONS */}
-
+        {/* ACTIONS */}
         <div
           style={{
             display: "flex",
@@ -428,7 +433,9 @@ export default function NewLeadPage() {
 
           <button
             type="button"
-            onClick={() => router.push("/dashboard/leads")}
+            onClick={() =>
+              router.push("/dashboard/leads")
+            }
             style={{
               minWidth: 120,
               padding: "12px 20px",
@@ -444,7 +451,7 @@ export default function NewLeadPage() {
           </button>
         </div>
       </form>
-    </div>
+    </main>
   );
 }
 
