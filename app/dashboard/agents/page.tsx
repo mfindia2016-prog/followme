@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase-browser";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type Agent = {
   id: string;
@@ -12,7 +12,7 @@ type Agent = {
 };
 
 export default function Agents() {
-  const supabase = createClient();
+  const supabase = supabaseBrowser();
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,6 +138,7 @@ export default function Agents() {
       >
         <div>
           <h1 style={{ margin: 0 }}>Agent Management</h1>
+
           <p style={{ color: "#666" }}>
             Manage agents, photos, mobile numbers and status.
           </p>
@@ -210,7 +211,9 @@ export default function Agents() {
                     fontWeight: 700,
                   }}
                 >
-                  {agent.agent_name?.charAt(0)?.toUpperCase()}
+                  {agent.agent_name
+                    ?.charAt(0)
+                    ?.toUpperCase()}
                 </div>
               )}
 
@@ -222,16 +225,25 @@ export default function Agents() {
                 <div
                   style={{
                     marginTop: 5,
-                    color: agent.is_active ? "green" : "red",
+                    color: agent.is_active
+                      ? "green"
+                      : "red",
                     fontWeight: 600,
                   }}
                 >
-                  {agent.is_active ? "Active" : "Hold"}
+                  {agent.is_active
+                    ? "Active"
+                    : "Hold"}
                 </div>
               </div>
             </div>
 
-            <label style={{ display: "block", marginBottom: 6 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
               Agent Name
             </label>
 
@@ -241,7 +253,11 @@ export default function Agents() {
                 setAgents((current) =>
                   current.map((a) =>
                     a.id === agent.id
-                      ? { ...a, agent_name: e.target.value }
+                      ? {
+                          ...a,
+                          agent_name:
+                            e.target.value,
+                        }
                       : a
                   )
                 )
@@ -263,7 +279,12 @@ export default function Agents() {
               }}
             />
 
-            <label style={{ display: "block", marginBottom: 6 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
               Mobile Number
             </label>
 
@@ -274,7 +295,11 @@ export default function Agents() {
                 setAgents((current) =>
                   current.map((a) =>
                     a.id === agent.id
-                      ? { ...a, mobile_no: e.target.value }
+                      ? {
+                          ...a,
+                          mobile_no:
+                            e.target.value,
+                        }
                       : a
                   )
                 )
@@ -341,10 +366,14 @@ export default function Agents() {
                 accept="image/*"
                 hidden
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
+                  const file =
+                    e.target.files?.[0];
 
                   if (file) {
-                    uploadPhoto(agent.id, file);
+                    uploadPhoto(
+                      agent.id,
+                      file
+                    );
                   }
                 }}
               />
