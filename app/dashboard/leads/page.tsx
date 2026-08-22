@@ -1,130 +1,94 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 
-type Lead = {
-  id: string;
-  customer_name: string;
-  company_name: string | null;
-  phone: string | null;
-  contact_no: string | null;
-  product: string | null;
-  source: string | null;
-  assigned_agent: string | null;
-  assigned_agent_id: string | null;
-  status: string | null;
-  lead_status: string | null;
-  next_followup_at: string | null;
-  next_follow_up_date: string | null;
-  next_follow_up_time: string | null;
-  reminder_enabled: boolean | null;
-  created_at: string;
-};
-
-type Agent = {
-  id: string;
-  agent_name: string;
-  is_active: boolean | null;
-};
-
 export default async function Leads() {
   const sb = await createClient();
 
-  // ---------------------------------------------
+  // --------------------------------------------------
   // LOAD LEADS
-  // ---------------------------------------------
+  // --------------------------------------------------
 
-  const { data: leadsData, error: leadsError } = await sb
+  const { data: leads, error: leadsError } = await sb
     .from("leads")
     .select("*")
     .order("created_at", { ascending: false });
 
-  // ---------------------------------------------
+  // --------------------------------------------------
   // LOAD ACTIVE AGENTS
-  // ---------------------------------------------
+  // --------------------------------------------------
 
-  const { data: agentsData, error: agentsError } = await sb
+  const { data: agents, error: agentsError } = await sb
     .from("agent_profiles")
     .select("id, agent_name, is_active")
     .eq("is_active", true)
     .order("agent_name", { ascending: true });
 
-  // ---------------------------------------------
-  // ERROR
-  // ---------------------------------------------
+  // --------------------------------------------------
+  // LEADS ERROR
+  // --------------------------------------------------
 
   if (leadsError) {
     return (
       <main style={{ padding: 30 }}>
-        <h1>Lead Management</h1>
+        <h1>Leads</h1>
 
-        <div
-          style={{
-            marginTop: 20,
-            padding: 20,
-            borderRadius: 10,
-            background: "#fee2e2",
-            color: "#991b1b",
-          }}
-        >
-          <strong>Error loading leads</strong>
-          <p>{leadsError.message}</p>
-        </div>
+        <p style={{ color: "red" }}>
+          Error loading leads: {leadsError.message}
+        </p>
       </main>
     );
   }
+
+  // --------------------------------------------------
+  // AGENTS ERROR
+  // --------------------------------------------------
 
   if (agentsError) {
     return (
       <main style={{ padding: 30 }}>
-        <h1>Lead Management</h1>
+        <h1>Leads</h1>
 
-        <div
-          style={{
-            marginTop: 20,
-            padding: 20,
-            borderRadius: 10,
-            background: "#fee2e2",
-            color: "#991b1b",
-          }}
-        >
-          <strong>Error loading agents</strong>
-          <p>{agentsError.message}</p>
-        </div>
+        <p style={{ color: "red" }}>
+          Error loading agents: {agentsError.message}
+        </p>
       </main>
     );
   }
 
-  const leads = (leadsData ?? []) as Lead[];
-  const agents = (agentsData ?? []) as Agent[];
-
-  // ---------------------------------------------
+  // --------------------------------------------------
   // AGENT LOOKUP
-  // ---------------------------------------------
+  // --------------------------------------------------
 
-  const agentMap = new Map<string, string>();
+  const agentMap = new Map(
+    (agents ?? []).map((agent: any) => [
+      agent.id,
+      agent.agent_name,
+    ])
+  );
 
-  agents.forEach((agent) => {
-    agentMap.set(agent.id, agent.agent_name);
-  });
+  // --------------------------------------------------
+  // SUMMARY COUNTS
+  // --------------------------------------------------
 
-  // ---------------------------------------------
-  // FOLLOW-UP COUNT
-  // ---------------------------------------------
+  const totalLeads = leads?.length ?? 0;
 
-  const followupCount = leads.filter((lead) => {
-    return (
+  const activeAgents = agents?.length ?? 0;
+
+  const followUps = (leads ?? []).filter(
+    (lead: any) =>
       lead.next_followup_at ||
       lead.next_follow_up_date
-    );
-  }).length;
+  ).length;
 
-  // ---------------------------------------------
+  // --------------------------------------------------
   // PAGE
-  // ---------------------------------------------
+  // --------------------------------------------------
 
   return (
     <main style={{ padding: 30 }}>
-      {/* HEADER */}
+      {/* ==================================================
+          HEADER
+      ================================================== */}
 
       <div
         style={{
@@ -143,7 +107,7 @@ export default async function Leads() {
 
           <p
             style={{
-              color: "#64748b",
+              color: "#666",
               marginTop: 6,
               marginBottom: 0,
             }}
@@ -151,6 +115,8 @@ export default async function Leads() {
             Manage leads, agents and follow-ups
           </p>
         </div>
+
+        {/* ACTION BUTTONS */}
 
         <div
           style={{
@@ -182,13 +148,15 @@ export default async function Leads() {
         </div>
       </div>
 
-      {/* SUMMARY */}
+      {/* ==================================================
+          SUMMARY CARDS
+      ================================================== */}
 
       <div
         style={{
           display: "grid",
           gridTemplateColumns:
-            "repeat(auto-fit, minmax(200px, 1fr))",
+            "repeat(auto-fit, minmax(180px, 1fr))",
           gap: 15,
           marginBottom: 25,
         }}
@@ -197,28 +165,22 @@ export default async function Leads() {
 
         <div
           style={{
-            padding: 20,
+            padding: 18,
             border: "1px solid #ddd",
-            borderRadius: 12,
+            borderRadius: 10,
             background: "#fff",
           }}
         >
-          <div
-            style={{
-              color: "#64748b",
-              marginBottom: 5,
-            }}
-          >
+          <div style={{ color: "#666" }}>
             Total Leads
           </div>
 
           <strong
             style={{
-              fontSize: 28,
-              color: "#0f172a",
+              fontSize: 26,
             }}
           >
-            {leads.length}
+            {totalLeads}
           </strong>
         </div>
 
@@ -226,28 +188,22 @@ export default async function Leads() {
 
         <div
           style={{
-            padding: 20,
+            padding: 18,
             border: "1px solid #ddd",
-            borderRadius: 12,
+            borderRadius: 10,
             background: "#fff",
           }}
         >
-          <div
-            style={{
-              color: "#64748b",
-              marginBottom: 5,
-            }}
-          >
+          <div style={{ color: "#666" }}>
             Active Agents
           </div>
 
           <strong
             style={{
-              fontSize: 28,
-              color: "#0f172a",
+              fontSize: 26,
             }}
           >
-            {agents.length}
+            {activeAgents}
           </strong>
         </div>
 
@@ -255,173 +211,170 @@ export default async function Leads() {
 
         <div
           style={{
-            padding: 20,
+            padding: 18,
             border: "1px solid #ddd",
-            borderRadius: 12,
+            borderRadius: 10,
             background: "#fff",
           }}
         >
-          <div
-            style={{
-              color: "#64748b",
-              marginBottom: 5,
-            }}
-          >
+          <div style={{ color: "#666" }}>
             Follow-ups
           </div>
 
           <strong
             style={{
-              fontSize: 28,
-              color: "#0f172a",
+              fontSize: 26,
             }}
           >
-            {followupCount}
+            {followUps}
           </strong>
         </div>
       </div>
 
-      {/* TABLE */}
+      {/* ==================================================
+          LEADS TABLE
+      ================================================== */}
 
-      {leads.length > 0 ? (
-        <div className="tablewrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Company</th>
-                <th>Phone</th>
-                <th>Product</th>
-                <th>Source</th>
-                <th>Agent</th>
-                <th>Status</th>
-                <th>Next Follow-up</th>
-                <th>Reminder</th>
-                <th>Action</th>
-              </tr>
-            </thead>
+      <div
+        className="tablewrap"
+        style={{
+          overflowX: "auto",
+        }}
+      >
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Customer</th>
 
-            <tbody>
-              {leads.map((lead) => {
-                // ---------------------------------
-                // PHONE
-                // ---------------------------------
+              <th>Company</th>
 
-                const phone =
-                  lead.phone ??
-                  lead.contact_no ??
-                  "-";
+              <th>Phone</th>
 
-                // ---------------------------------
-                // AGENT
-                // ---------------------------------
+              <th>Product</th>
 
-                const agentId =
-                  lead.assigned_agent ??
-                  lead.assigned_agent_id ??
-                  null;
+              <th>Source</th>
 
-                const agentName = agentId
-                  ? agentMap.get(agentId) ??
-                    "Unknown Agent"
-                  : "Unassigned";
+              <th>Agent</th>
 
-                // ---------------------------------
-                // STATUS
-                // ---------------------------------
+              <th>Status</th>
 
-                const currentStatus =
-                  lead.status ??
-                  lead.lead_status ??
-                  "new";
+              <th>Next Follow-up</th>
 
-                // ---------------------------------
-                // FOLLOW-UP
-                // ---------------------------------
+              {/* NEW COLUMN */}
 
-                let followup: Date | null = null;
+              <th>Last Remarks</th>
 
-                if (lead.next_followup_at) {
-                  const parsed =
-                    new Date(
-                      lead.next_followup_at
-                    );
+              <th>Reminder</th>
 
-                  if (
-                    !Number.isNaN(
-                      parsed.getTime()
-                    )
-                  ) {
-                    followup = parsed;
-                  }
-                }
+              <th>Action</th>
+            </tr>
+          </thead>
 
-                // If old timestamp is empty,
-                // use date + time columns.
+          <tbody>
+            {(leads ?? []).map(
+              (lead: any) => {
+                // ------------------------------------------
+                // FOLLOW-UP DATE
+                // ------------------------------------------
 
-                if (
-                  !followup &&
-                  lead.next_follow_up_date
-                ) {
-                  const time =
-                    lead.next_follow_up_time ??
-                    "09:00:00";
+                const followup =
+                  lead.next_followup_at
+                    ? new Date(
+                        lead.next_followup_at
+                      )
+                    : null;
 
-                  const parsed =
-                    new Date(
-                      `${lead.next_follow_up_date}T${time}`
-                    );
-
-                  if (
-                    !Number.isNaN(
-                      parsed.getTime()
-                    )
-                  ) {
-                    followup = parsed;
-                  }
-                }
+                // ------------------------------------------
+                // OVERDUE
+                // ------------------------------------------
 
                 const isOverdue =
                   followup !== null &&
+                  !Number.isNaN(
+                    followup.getTime()
+                  ) &&
                   followup.getTime() <
                     Date.now();
 
+                // ------------------------------------------
+                // AGENT NAME
+                // ------------------------------------------
+
+                const agentName =
+                  lead.assigned_agent
+                    ? agentMap.get(
+                        lead.assigned_agent
+                      ) ?? "Unknown Agent"
+                    : lead.assigned_agent_id
+                    ? agentMap.get(
+                        lead.assigned_agent_id
+                      ) ?? "Unknown Agent"
+                    : "Unassigned";
+
+                // ------------------------------------------
+                // LAST REMARKS
+                //
+                // First check remarks.
+                // If remarks is empty, check notes.
+                // ------------------------------------------
+
+                const lastRemarks =
+                  lead.remarks?.trim() ||
+                  lead.notes?.trim() ||
+                  "-";
+
                 return (
                   <tr key={lead.id}>
-                    {/* CUSTOMER */}
+                    {/* =====================================
+                        CUSTOMER
+                    ===================================== */}
 
                     <td>
                       <strong>
-                        {lead.customer_name ||
+                        {lead.customer_name ??
                           "-"}
                       </strong>
                     </td>
 
-                    {/* COMPANY */}
+                    {/* =====================================
+                        COMPANY
+                    ===================================== */}
 
                     <td>
-                      {lead.company_name ||
+                      {lead.company_name ??
                         "-"}
                     </td>
 
-                    {/* PHONE */}
-
-                    <td>{phone}</td>
-
-                    {/* PRODUCT */}
+                    {/* =====================================
+                        PHONE
+                    ===================================== */}
 
                     <td>
-                      {lead.product || "-"}
+                      {lead.phone ??
+                        lead.contact_no ??
+                        "-"}
                     </td>
 
-                    {/* SOURCE */}
+                    {/* =====================================
+                        PRODUCT
+                    ===================================== */}
 
                     <td>
-                      {lead.source ||
-                        "Manual"}
+                      {lead.product ?? "-"}
                     </td>
 
-                    {/* AGENT */}
+                    {/* =====================================
+                        SOURCE
+                    ===================================== */}
+
+                    <td>
+                      {lead.source ??
+                        "manual"}
+                    </td>
+
+                    {/* =====================================
+                        AGENT
+                    ===================================== */}
 
                     <td>
                       <strong>
@@ -429,42 +382,62 @@ export default async function Leads() {
                       </strong>
                     </td>
 
-                    {/* STATUS */}
+                    {/* =====================================
+                        STATUS
+                    ===================================== */}
 
                     <td>
                       <span
                         className={
                           "status " +
-                          currentStatus
+                          (lead.status ??
+                            lead.lead_status ??
+                            "new")
                         }
                       >
-                        {currentStatus}
+                        {lead.status ??
+                          lead.lead_status ??
+                          "new"}
                       </span>
                     </td>
 
-                    {/* FOLLOW-UP */}
+                    {/* =====================================
+                        NEXT FOLLOW-UP
+                    ===================================== */}
 
                     <td>
-                      {followup ? (
+                      {followup &&
+                      !Number.isNaN(
+                        followup.getTime()
+                      ) ? (
                         <div>
                           <div
                             style={{
                               fontWeight: 600,
                               color: isOverdue
-                                ? "#dc2626"
+                                ? "red"
                                 : "#222",
+                              whiteSpace:
+                                "nowrap",
                             }}
                           >
                             {followup.toLocaleString(
-                              "en-IN"
+                              "en-IN",
+                              {
+                                day: "numeric",
+                                month: "numeric",
+                                year: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: true,
+                              }
                             )}
                           </div>
 
                           {isOverdue && (
                             <small
                               style={{
-                                color:
-                                  "#dc2626",
+                                color: "red",
                                 fontWeight: 700,
                               }}
                             >
@@ -472,12 +445,66 @@ export default async function Leads() {
                             </small>
                           )}
                         </div>
+                      ) : lead
+                          .next_follow_up_date ? (
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {
+                              lead.next_follow_up_date
+                            }
+
+                            {lead
+                              .next_follow_up_time
+                              ? `, ${String(
+                                  lead.next_follow_up_time
+                                ).substring(
+                                  0,
+                                  5
+                                )}`
+                              : ""}
+                          </div>
+                        </div>
                       ) : (
                         "-"
                       )}
                     </td>
 
-                    {/* REMINDER */}
+                    {/* =====================================
+                        LAST REMARKS
+                    ===================================== */}
+
+                    <td>
+                      <div
+                        style={{
+                          minWidth: 180,
+                          maxWidth: 300,
+                          whiteSpace:
+                            "pre-wrap",
+                          overflowWrap:
+                            "break-word",
+                          lineHeight: 1.4,
+                          color:
+                            lastRemarks ===
+                            "-"
+                              ? "#94a3b8"
+                              : "#334155",
+                          fontSize: 14,
+                        }}
+                        title={lastRemarks}
+                      >
+                        {lastRemarks}
+                      </div>
+                    </td>
+
+                    {/* =====================================
+                        REMINDER
+                    ===================================== */}
 
                     <td>
                       {lead.reminder_enabled ? (
@@ -485,6 +512,8 @@ export default async function Leads() {
                           style={{
                             color: "green",
                             fontWeight: 600,
+                            whiteSpace:
+                              "nowrap",
                           }}
                         >
                           🔔 ON
@@ -500,7 +529,9 @@ export default async function Leads() {
                       )}
                     </td>
 
-                    {/* EDIT */}
+                    {/* =====================================
+                        ACTION
+                    ===================================== */}
 
                     <td>
                       <Link
@@ -520,19 +551,24 @@ export default async function Leads() {
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        /* EMPTY STATE */
+              }
+            )}
+          </tbody>
+        </table>
+      </div>
 
+      {/* ==================================================
+          EMPTY STATE
+      ================================================== */}
+
+      {(leads ?? []).length === 0 && (
         <div
           style={{
             padding: 40,
             textAlign: "center",
             border: "1px solid #ddd",
-            borderRadius: 12,
+            borderRadius: 10,
+            marginTop: 20,
             background: "#fff",
           }}
         >
@@ -540,7 +576,7 @@ export default async function Leads() {
 
           <p
             style={{
-              color: "#64748b",
+              color: "#666",
             }}
           >
             Create your first lead or import
