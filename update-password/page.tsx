@@ -31,13 +31,11 @@ export default function UpdatePassword() {
       }
     );
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (data.session) {
-          setReady(true);
-        }
-      });
+    supabase.auth.getSession().then((result: any) => {
+      if (result?.data?.session) {
+        setReady(true);
+      }
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -64,14 +62,14 @@ export default function UpdatePassword() {
 
     const supabase = supabaseBrowser();
 
-    const { error } = await supabase.auth.updateUser({
+    const { error: updateError } = await supabase.auth.updateUser({
       password,
     });
 
     setLoading(false);
 
-    if (error) {
-      setError(error.message);
+    if (updateError) {
+      setError(updateError.message);
       return;
     }
 
