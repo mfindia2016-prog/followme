@@ -10,28 +10,9 @@ type Agent = {
   is_active?: boolean;
 };
 
-const statuses = [
-  "new",
-  "followup",
-  "interested",
-  "quotation",
-  "won",
-  "lost",
-];
-
-const sources = [
-  "IndiaMART",
-  "TradeIndia",
-  "Website",
-  "WhatsApp",
-  "Reference",
-  "Phone",
-  "Manual",
-  "Other",
-];
-
 export default function NewLeadPage() {
   const router = useRouter();
+  const supabase = supabaseBrowser();
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
@@ -43,37 +24,32 @@ export default function NewLeadPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [city, setCity] = useState("");
+  const [state, setState] = useState("");
 
-  // Product is FREE TEXT.
-  // No dropdown.
+  // Product is MANUAL TEXT.
+  // Auto-imported leads can also fill this same field.
   const [product, setProduct] = useState("");
 
-  const [source, setSource] = useState("Manual");
-  const [agentId, setAgentId] = useState("");
+  const [source, setSource] = useState("");
+  const [assignedAgent, setAssignedAgent] = useState("");
+
   const [status, setStatus] = useState("new");
   const [remarks, setRemarks] = useState("");
 
-  const [followupDate, setFollowupDate] = useState("");
-  const [followupTime, setFollowupTime] = useState("");
+  const [nextFollowUpDate, setNextFollowUpDate] = useState("");
+  const [nextFollowUpTime, setNextFollowUpTime] = useState("");
   const [reminderEnabled, setReminderEnabled] = useState(true);
 
-  // Load active agents
   useEffect(() => {
     async function loadAgents() {
       setLoadingAgents(true);
-      setError("");
 
-      const sb = supabaseBrowser();
-
-      const { data, error: agentError } = await sb
+      const { data, error } = await supabase
         .from("agent_profiles")
         .select("id, agent_name, is_active")
-        .eq("is_active", true)
         .order("agent_name", { ascending: true });
 
-      if (agentError) {
-        setError("Unable to load agents: " + agentError.message);
-      } else {
+      if (!error) {
         setAgents((data ?? []) as Agent[]);
       }
 
@@ -81,406 +57,396 @@ export default function NewLeadPage() {
     }
 
     loadAgents();
-  }, []);
+  }, [supabase]);
 
-  async function saveLead(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     setError("");
 
     if (!customerName.trim()) {
-      setError("Customer name is required.");
+      setError("Customer Name is required.");
       return;
     }
 
     if (!product.trim()) {
-      setError("Product name is required.");
+      setError("Product Name is required.");
       return;
     }
 
     setSaving(true);
 
-    const sb = supabaseBrowser();
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    let nextFollowupAt: string | null = null;
+      if (!user) {
+        setError("Your login session has expired. Please login again.");
+        setSaving(false);
+        return;
+      }
 
-    if (followupDate) {
-      const time = followupTime || "09:00";
-      nextFollowupAt = `${followupDate}T${time}:00`;
-    }
+      let nextFollowupAt: string | null = null;
 
-    const { error: insertError } = await sb
-      .from("leads")
-      .insert({
+      if (nextFollowUpDate) {
+        const time = nextFollowUpTime || "09:00";
+        nextFollowupAt = new Date(
+          `${nextFollowUpDate}T${time}:00`
+        ).toISOString();
+      }
+
+      const { error: insertError } = await supabase.from("leads").insert({
         customer_name: customerName.trim(),
         company_name: companyName.trim() || null,
         phone: phone.trim() || null,
+        contact_no: phone.trim() || null,
         email: email.trim() || null,
-        city: city.trim() || null,
+        email_id: email.trim() || null,
+
+        // IMPORTANT:
+        // Product is stored directly in leads.product
+        // No product dropdown / product_id required.
         product: product.trim(),
-        source: source || "Manual",
-        assigned_agent: agentId || null,
+
+        city: city.trim() || null,
+        state: state.trim() || null,
+
+        source: source.trim() || null,
+
+        assigned_agent: assignedAgent || null,
+        assigned_agent_id: assignedAgent || null,
+
         status,
+        lead_status: status,
+
         remarks: remarks.trim() || null,
+        notes: remarks.trim() || null,
+
         next_followup_at: nextFollowupAt,
+        next_follow_up_date: nextFollowUpDate || null,
+        next_follow_up_time: nextFollowUpTime || null,
+
         reminder_enabled: reminderEnabled,
+
+        created_by: user.id,
       });
 
-    setSaving(false);
+      if (insertError) {
+        setError(insertError.message);
+        setSaving(false);
+        return;
+      }
 
-    if (insertError) {
-      setError("Unable to save lead: " + insertError.message);
-      return;
+      router.push("/dashboard/leads");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while creating the lead."
+      );
+      setSaving(false);
     }
-
-    router.push("/dashboard/leads");
-    router.refresh();
   }
 
   return (
-    <main style={{ maxWidth: 1000 }}>
-      {/* HEADER */}
+    <div>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 25,
-          gap: 15,
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>New Lead</h1>
-
-          <p style={{ color: "#667085", marginTop: 6 }}>
+          <h1 style={{ marginBottom: 5 }}>New Lead</h1>
+          <p style={{ margin: 0, color: "#64748b" }}>
             Add customer, product, agent and follow-up details.
           </p>
         </div>
 
         <button
           type="button"
+          className="btn"
           onClick={() => router.push("/dashboard/leads")}
-          style={{
-            padding: "11px 20px",
-            border: "0",
-            borderRadius: 8,
-            background: "#e9eef5",
-            color: "#102a43",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
         >
           ← Back
         </button>
       </div>
 
-      <form
-        onSubmit={saveLead}
-        style={{
-          background: "#fff",
-          border: "1px solid #dfe5ec",
-          borderRadius: 14,
-          padding: 28,
-          boxShadow: "0 4px 15px rgba(0,0,0,0.04)",
-        }}
-      >
+      <form onSubmit={handleSubmit}>
+        <div className="card">
+          <h2>Customer Information</h2>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 20,
+            }}
+          >
+            <div className="field">
+              <label>Customer Name *</label>
+              <input
+                className="input"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Customer name"
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label>Company Name</label>
+              <input
+                className="input"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Company name"
+              />
+            </div>
+
+            <div className="field">
+              <label>Mobile Number</label>
+              <input
+                className="input"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91XXXXXXXXXX"
+              />
+            </div>
+
+            <div className="field">
+              <label>Email</label>
+              <input
+                className="input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="customer@email.com"
+              />
+            </div>
+
+            <div className="field">
+              <label>City</label>
+              <input
+                className="input"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="City"
+              />
+            </div>
+
+            <div className="field">
+              <label>State</label>
+              <input
+                className="input"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                placeholder="State"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 20 }}>
+          <h2>Product</h2>
+
+          <div className="field">
+            <label>Product Name *</label>
+
+            <input
+              className="input"
+              value={product}
+              onChange={(e) => setProduct(e.target.value)}
+              placeholder="Enter product name"
+              required
+            />
+
+            <p
+              style={{
+                marginTop: 7,
+                color: "#64748b",
+                fontSize: 14,
+              }}
+            >
+              Product can be entered manually. Auto-imported leads can also
+              automatically fill this field.
+            </p>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 20 }}>
+          <h2>Lead Assignment</h2>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 20,
+            }}
+          >
+            <div className="field">
+              <label>Source</label>
+              <input
+                className="input"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="IndiaMART / TradeIndia / Website / WhatsApp"
+              />
+            </div>
+
+            <div className="field">
+              <label>Assign Agent</label>
+
+              <select
+                className="input"
+                value={assignedAgent}
+                onChange={(e) => setAssignedAgent(e.target.value)}
+              >
+                <option value="">
+                  {loadingAgents ? "Loading agents..." : "Unassigned"}
+                </option>
+
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.agent_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label>Status</label>
+
+              <select
+                className="input"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="new">New</option>
+                <option value="followup">Follow-up</option>
+                <option value="interested">Interested</option>
+                <option value="quoted">Quoted</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 20 }}>
+          <h2>Next Follow-up</h2>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 20,
+            }}
+          >
+            <div className="field">
+              <label>Follow-up Date</label>
+
+              <input
+                className="input"
+                type="date"
+                value={nextFollowUpDate}
+                onChange={(e) => setNextFollowUpDate(e.target.value)}
+              />
+            </div>
+
+            <div className="field">
+              <label>Follow-up Time</label>
+
+              <input
+                className="input"
+                type="time"
+                value={nextFollowUpTime}
+                onChange={(e) => setNextFollowUpTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 20,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={reminderEnabled}
+              onChange={(e) => setReminderEnabled(e.target.checked)}
+              id="reminder"
+            />
+
+            <label htmlFor="reminder">
+              Enable reminder
+            </label>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 20 }}>
+          <h2>Remarks / Notes</h2>
+
+          <textarea
+            className="input"
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            placeholder="Enter remarks, requirements, conversation notes..."
+            rows={5}
+            style={{ resize: "vertical" }}
+          />
+        </div>
+
         {error && (
           <div
             style={{
-              background: "#feecec",
-              color: "#c62828",
-              padding: 13,
+              marginTop: 20,
+              padding: 15,
               borderRadius: 8,
-              marginBottom: 20,
-              fontWeight: 500,
+              background: "#fee2e2",
+              color: "#b91c1c",
             }}
           >
             {error}
           </div>
         )}
 
-        {/* CUSTOMER */}
-        <h2 style={{ marginBottom: 18 }}>
-          Customer Information
-        </h2>
-
-        <div style={gridStyle}>
-          <Field label="Customer Name *">
-            <input
-              className="input"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Customer name"
-              required
-            />
-          </Field>
-
-          <Field label="Company Name">
-            <input
-              className="input"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Company name"
-            />
-          </Field>
-
-          <Field label="Mobile Number">
-            <input
-              className="input"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+91XXXXXXXXXX"
-            />
-          </Field>
-
-          <Field label="Email">
-            <input
-              className="input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="customer@email.com"
-            />
-          </Field>
-
-          <Field label="City">
-            <input
-              className="input"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="City"
-            />
-          </Field>
-        </div>
-
-        {/* PRODUCT */}
-        <h2 style={{ marginTop: 32, marginBottom: 18 }}>
-          Product
-        </h2>
-
-        <Field label="Product Name *">
-          <input
-            className="input"
-            value={product}
-            onChange={(e) => setProduct(e.target.value)}
-            placeholder="Type or change product name"
-            required
-          />
-
-          <div
-            style={{
-              marginTop: 7,
-              fontSize: 13,
-              color: "#667085",
-            }}
-          >
-            Manual entry allowed. Auto-imported leads can also fill this
-            field automatically.
-          </div>
-        </Field>
-
-        {/* ASSIGNMENT */}
-        <h2 style={{ marginTop: 32, marginBottom: 18 }}>
-          Lead Assignment
-        </h2>
-
-        <div style={gridStyle}>
-          <Field label="Source">
-            <select
-              className="input"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-            >
-              {sources.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Assign Agent">
-            <select
-              className="input"
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-              disabled={loadingAgents}
-            >
-              <option value="">
-                {loadingAgents
-                  ? "Loading agents..."
-                  : "Select agent"}
-              </option>
-
-              {agents.map((agent) => (
-                <option
-                  key={agent.id}
-                  value={agent.id}
-                >
-                  {agent.agent_name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Status">
-            <select
-              className="input"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              {statuses.map((item) => (
-                <option key={item} value={item}>
-                  {item.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        {/* FOLLOW-UP */}
-        <h2 style={{ marginTop: 32, marginBottom: 18 }}>
-          Follow-up
-        </h2>
-
-        <div style={gridStyle}>
-          <Field label="Next Follow-up Date">
-            <input
-              className="input"
-              type="date"
-              value={followupDate}
-              onChange={(e) =>
-                setFollowupDate(e.target.value)
-              }
-            />
-          </Field>
-
-          <Field label="Next Follow-up Time">
-            <input
-              className="input"
-              type="time"
-              value={followupTime}
-              onChange={(e) =>
-                setFollowupTime(e.target.value)
-              }
-            />
-          </Field>
-        </div>
-
-        <div style={{ marginTop: 20 }}>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={reminderEnabled}
-              onChange={(e) =>
-                setReminderEnabled(e.target.checked)
-              }
-              style={{
-                width: 18,
-                height: 18,
-              }}
-            />
-
-            🔔 Reminder ON
-          </label>
-        </div>
-
-        {/* REMARKS */}
-        <h2 style={{ marginTop: 32, marginBottom: 18 }}>
-          Remarks
-        </h2>
-
-        <textarea
-          className="input"
-          value={remarks}
-          onChange={(e) => setRemarks(e.target.value)}
-          placeholder="Customer requirement, discussion, quotation details, etc."
-          rows={5}
-          style={{
-            width: "100%",
-            resize: "vertical",
-            fontFamily: "inherit",
-          }}
-        />
-
-        {/* ACTIONS */}
         <div
           style={{
+            marginTop: 25,
             display: "flex",
             gap: 12,
-            marginTop: 30,
           }}
         >
           <button
             type="submit"
             className="btn"
             disabled={saving}
-            style={{
-              minWidth: 150,
-              opacity: saving ? 0.7 : 1,
-            }}
           >
             {saving ? "Saving..." : "Save Lead"}
           </button>
 
           <button
             type="button"
-            onClick={() =>
-              router.push("/dashboard/leads")
-            }
+            className="btn"
             style={{
-              minWidth: 120,
-              padding: "12px 20px",
-              border: "0",
-              borderRadius: 8,
-              background: "#e9eef5",
-              color: "#102a43",
-              fontWeight: 600,
-              cursor: "pointer",
+              background: "#e2e8f0",
+              color: "#0f172a",
             }}
+            onClick={() => router.push("/dashboard/leads")}
+            disabled={saving}
           >
             Cancel
           </button>
         </div>
       </form>
-    </main>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="field">
-      <label
-        style={{
-          display: "block",
-          marginBottom: 7,
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </label>
-
-      {children}
     </div>
   );
 }
-
-const gridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 20,
-};
