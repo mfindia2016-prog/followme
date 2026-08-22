@@ -1,2 +1,16 @@
-./lib/supabase-browser.ts:1:36
-Type error: Module '"@supabase/ssr"' has no exported member 'SupabaseClient'.
+import { createBrowserClient } from "@supabase/ssr";
+
+let browserClient: ReturnType<typeof createBrowserClient> | undefined;
+
+export function supabaseBrowser() {
+  if (browserClient) {
+    return browserClient;
+  }
+
+  browserClient = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+
+  return browserClient;
+}
