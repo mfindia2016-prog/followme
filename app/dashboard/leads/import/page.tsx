@@ -1,439 +1,240 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { createClient } from "@/lib/supabase-browser";
 
-type Agent = {
-  id: string;
-  agent_name: string;
-  is_active?: boolean;
+type LeadRow = {
+  id?: string;
+  customer_name?: string;
+  company_name?: string;
+  phone?: string | number;
+  email?: string;
+  city?: string;
+  product?: string;
+  source?: string;
+  status?: string;
 };
 
-type ImportedLead = {
-  customer_name: string;
-  company_name: string | null;
-  phone: string | null;
-  email: string | null;
-  city: string | null;
-  state: string | null;
-  product: string;
-  source: string | null;
-  agent_name: string | null;
-  status: string;
-  next_follow_up_date: string | null;
-  next_follow_up_time: string | null;
-  remarks: string | null;
-};
+const ALLOWED_STATUS = ["new", "followup", "won", "lost"];
+
+function clean(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function normalizeStatus(value: unknown): string {
+  const status = clean(value).toLowerCase();
+
+  if (ALLOWED_STATUS.includes(status)) {
+    return status;
+  }
+
+  return "new";
+}
 
 export default function ImportLeadsPage() {
-  const router = useRouter();
-  const supabase = supabaseBrowser();
-
   const [file, setFile] = useState<File | null>(null);
-  const [rows, setRows] = useState<ImportedLead[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [rows, setRows] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
-  async function loadAgents() {
-    const { data, error } = await supabase
-      .from("agent_profiles")
-      .select("id, agent_name, is_active")
-      .eq("is_active", true)
-      .order("agent_name", { ascending: true });
+  // =====================================================
+  // READ EXCEL / CSV
+  // =====================================================
 
-    if (error) {
-      setError("Could not load agents: " + error.message);
-      return;
-    }
-
-    setAgents((data ?? []) as Agent[]);
-  }
-
-  function getValue(row: any, names: string[]) {
-    for (const name of names) {
-      if (
-        row[name] !== undefined &&
-        row[name] !== null &&
-        String(row[name]).trim() !== ""
-      ) {
-        return String(row[name]).trim();
-      }
-    }
-
-    return "";
-  }
-
-  function excelDateToString(value: any) {
-    if (!value) return null;
-
-    if (typeof value === "number") {
-      const date = XLSX.SSF.parse_date_code(value);
-
-      if (date) {
-        const month = String(date.m).padStart(2, "0");
-        const day = String(date.d).padStart(2, "0");
-
-        return `${date.y}-${month}-${day}`;
-      }
-    }
-
-    const text = String(value).trim();
-
-    if (!text) return null;
-
-    return text;
-  }
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const selectedFile = e.target.files?.[0];
-
-    if (!selectedFile) return;
-
-    setFile(selectedFile);
+  async function handleFile(file: File) {
+    setFile(file);
     setRows([]);
+    setMessage("");
     setError("");
-    setSuccess("");
-    setLoading(true);
 
     try {
-      await loadAgents();
-
-      const buffer = await selectedFile.arrayBuffer();
+      const buffer = await file.arrayBuffer();
 
       const workbook = XLSX.read(buffer, {
         type: "array",
       });
 
-      const sheetName = workbook.SheetNames[0];
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      if (!sheetName) {
-        setError("Excel file has no worksheet.");
-        setLoading(false);
+      const data = XLSX.utils.sheet_to_json<LeadRow>(
+        firstSheet,
+        {
+          defval: "",
+        }
+      );
+
+      if (!data.length) {
+        setError("File is empty.");
         return;
       }
 
-      const worksheet = workbook.Sheets[sheetName];
+      setRows(data);
+      setMessage(`${data.length} leads found in file.`);
+    } catch (err: any) {
+      console.error(err);
 
-      const data = XLSX.utils.sheet_to_json(worksheet, {
-        defval: "",
-      });
-
-      const imported: ImportedLead[] = (data as any[]).map((row) => ({
-        customer_name: getValue(row, [
-          "Customer Name",
-          "customer_name",
-          "Customer",
-          "Name",
-        ]),
-
-        company_name:
-          getValue(row, [
-            "Company Name",
-            "company_name",
-            "Company",
-          ]) || null,
-
-        phone:
-          getValue(row, [
-            "Phone",
-            "Mobile",
-            "Mobile Number",
-            "phone",
-            "contact_no",
-          ]) || null,
-
-        email:
-          getValue(row, [
-            "Email",
-            "email",
-            "Email ID",
-          ]) || null,
-
-        city:
-          getValue(row, [
-            "City",
-            "city",
-          ]) || null,
-
-        state:
-          getValue(row, [
-            "State",
-            "state",
-          ]) || null,
-
-        product: getValue(row, [
-          "Product",
-          "Product Name",
-          "product",
-        ]),
-
-        source:
-          getValue(row, [
-            "Source",
-            "source",
-          ]) || null,
-
-        agent_name:
-          getValue(row, [
-            "Agent",
-            "Agent Name",
-            "agent_name",
-            "Assigned Agent",
-          ]) || null,
-
-        status:
-          getValue(row, [
-            "Status",
-            "status",
-          ]) || "new",
-
-        next_follow_up_date:
-          excelDateToString(
-            row["Follow-up Date"] ??
-              row["Follow Up Date"] ??
-              row["next_follow_up_date"]
-          ),
-
-        next_follow_up_time:
-          getValue(row, [
-            "Follow-up Time",
-            "Follow Up Time",
-            "next_follow_up_time",
-          ]) || null,
-
-        remarks:
-          getValue(row, [
-            "Remarks",
-            "Notes",
-            "remarks",
-            "notes",
-          ]) || null,
-      }));
-
-      setRows(imported);
-    } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Could not read Excel file."
+        err?.message ||
+          "Unable to read this Excel/CSV file."
       );
     }
-
-    setLoading(false);
   }
 
+  // =====================================================
+  // FILE CHANGE
+  // =====================================================
+
+  function onFileChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const selected = event.target.files?.[0];
+
+    if (!selected) return;
+
+    handleFile(selected);
+  }
+
+  // =====================================================
+  // IMPORT INTO SUPABASE
+  // =====================================================
+
   async function importLeads() {
-    if (rows.length === 0) {
-      setError("Please select an Excel file first.");
+    if (!rows.length) {
+      setError("Please select an Excel or CSV file first.");
       return;
     }
 
-    setImporting(true);
+    setLoading(true);
+    setMessage("");
     setError("");
-    setSuccess("");
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const supabase = createClient();
 
-      if (!user) {
-        setError("Please login again.");
-        setImporting(false);
-        return;
+      // -------------------------------------------------
+      // PREPARE DATA
+      // -------------------------------------------------
+
+      const leads = rows.map((row, index) => {
+        const phoneText = clean(row.phone);
+
+        return {
+          id:
+            clean(row.id) ||
+            `IMPORT-${Date.now()}-${index + 1}`,
+
+          customer_name:
+            clean(row.customer_name) ||
+            "Unknown Customer",
+
+          company_name:
+            clean(row.company_name),
+
+          phone: phoneText
+            ? Number(phoneText.replace(/\D/g, ""))
+            : null,
+
+          email:
+            clean(row.email),
+
+          city:
+            clean(row.city),
+
+          product:
+            clean(row.product),
+
+          source:
+            clean(row.source) ||
+            "Excel Import",
+
+          status:
+            normalizeStatus(row.status),
+        };
+      });
+
+      // -------------------------------------------------
+      // INSERT IN BATCHES
+      // -------------------------------------------------
+
+      const batchSize = 100;
+
+      let imported = 0;
+
+      for (
+        let i = 0;
+        i < leads.length;
+        i += batchSize
+      ) {
+        const batch = leads.slice(
+          i,
+          i + batchSize
+        );
+
+        const { error: insertError } =
+          await supabase
+            .from("leads")
+            .insert(batch);
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        imported += batch.length;
       }
 
-      const { data: currentAgents, error: agentError } =
-        await supabase
-          .from("agent_profiles")
-          .select("id, agent_name, is_active")
-          .eq("is_active", true);
-
-      if (agentError) {
-        setError(
-          "Could not load agents: " +
-            agentError.message
-        );
-        setImporting(false);
-        return;
-      }
-
-      const agentList = (currentAgents ?? []) as Agent[];
-
-      const findAgent = (agentName: string | null) => {
-        if (!agentName) return null;
-
-        const searchName = agentName
-          .trim()
-          .toLowerCase();
-
-        const agent = agentList.find(
-          (a) =>
-            a.agent_name.trim().toLowerCase() ===
-            searchName
-        );
-
-        return agent ?? null;
-      };
-
-      const leadsToInsert = rows
-        .filter((row) => row.customer_name.trim())
-        .map((row) => {
-          const agent = findAgent(row.agent_name);
-
-          let nextFollowupAt: string | null = null;
-
-          if (row.next_follow_up_date) {
-            const time =
-              row.next_follow_up_time || "09:00";
-
-            const parsed = new Date(
-              `${row.next_follow_up_date}T${time}:00`
-            );
-
-            if (!Number.isNaN(parsed.getTime())) {
-              nextFollowupAt =
-                parsed.toISOString();
-            }
-          }
-
-          return {
-            customer_name:
-              row.customer_name.trim(),
-
-            company_name:
-              row.company_name || null,
-
-            phone:
-              row.phone || null,
-
-            contact_no:
-              row.phone || null,
-
-            email:
-              row.email || null,
-
-            email_id:
-              row.email || null,
-
-            city:
-              row.city || null,
-
-            state:
-              row.state || null,
-
-            product:
-              row.product || null,
-
-            source:
-              row.source || "Excel",
-
-            assigned_agent:
-              agent?.id || null,
-
-            assigned_agent_id:
-              agent?.id || null,
-
-            status:
-              row.status || "new",
-
-            lead_status:
-              row.status || "new",
-
-            remarks:
-              row.remarks || null,
-
-            notes:
-              row.remarks || null,
-
-            next_followup_at:
-              nextFollowupAt,
-
-            next_follow_up_date:
-              row.next_follow_up_date || null,
-
-            next_follow_up_time:
-              row.next_follow_up_time || null,
-
-            reminder_enabled:
-              Boolean(nextFollowupAt),
-
-            created_by:
-              user.id,
-          };
-        });
-
-      if (leadsToInsert.length === 0) {
-        setError(
-          "No valid leads found in the Excel file."
-        );
-        setImporting(false);
-        return;
-      }
-
-      const { error: insertError } =
-        await supabase
-          .from("leads")
-          .insert(leadsToInsert);
-
-      if (insertError) {
-        setError(
-          "Import failed: " +
-            insertError.message
-        );
-        setImporting(false);
-        return;
-      }
-
-      const assignedCount =
-        leadsToInsert.filter(
-          (lead) =>
-            lead.assigned_agent_id !== null
-        ).length;
-
-      const unassignedCount =
-        leadsToInsert.length -
-        assignedCount;
-
-      setSuccess(
-        `${leadsToInsert.length} leads imported successfully. ` +
-          `${assignedCount} assigned to agents, ` +
-          `${unassignedCount} unassigned.`
+      setMessage(
+        `Successfully imported ${imported} leads.`
       );
 
-      setTimeout(() => {
-        router.push("/dashboard/leads");
-        router.refresh();
-      }, 1500);
-    } catch (err) {
+      setRows([]);
+      setFile(null);
+    } catch (err: any) {
+      console.error(err);
+
       setError(
-        err instanceof Error
-          ? err.message
-          : "Import failed."
+        err?.message ||
+          "Import failed. Please check your CSV/Excel columns."
       );
+    } finally {
+      setLoading(false);
     }
-
-    setImporting(false);
   }
 
+  // =====================================================
+  // PAGE
+  // =====================================================
+
   return (
-    <main style={{ padding: 30 }}>
+    <main
+      style={{
+        padding: 30,
+        maxWidth: 1200,
+        margin: "0 auto",
+      }}
+    >
+      {/* HEADER */}
+
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: 15,
+          flexWrap: "wrap",
           marginBottom: 25,
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>
-            Import Leads from Excel
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 30,
+            }}
+          >
+            Import Leads
           </h1>
 
           <p
@@ -442,94 +243,174 @@ export default function ImportLeadsPage() {
               marginTop: 6,
             }}
           >
-            Upload your Excel file and import
-            leads directly into the CRM.
+            Upload Excel or CSV file into your CRM
           </p>
         </div>
 
-        <button
+        <a
+          href="/dashboard/leads"
           className="btn"
-          onClick={() =>
-            router.push("/dashboard/leads")
-          }
+          style={{
+            textDecoration: "none",
+          }}
         >
-          ← Back
-        </button>
+          ← Back to Leads
+        </a>
       </div>
 
+      {/* UPLOAD BOX */}
+
       <div
-        className="card"
         style={{
-          padding: 25,
-          marginBottom: 20,
+          border: "2px dashed #cbd5e1",
+          borderRadius: 14,
+          padding: 35,
+          background: "#f8fafc",
+          textAlign: "center",
+          marginBottom: 25,
         }}
       >
-        <h2>1. Select Excel File</h2>
-
-        <input
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={handleFile}
+        <h2
           style={{
-            marginTop: 15,
+            marginTop: 0,
           }}
-        />
+        >
+          Upload Excel / CSV
+        </h2>
+
+        <p
+          style={{
+            color: "#64748b",
+          }}
+        >
+          Select .xlsx, .xls or .csv file
+        </p>
+
+        <label
+          style={{
+            display: "inline-block",
+            padding: "12px 22px",
+            background: "#2563eb",
+            color: "#fff",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Choose File
+
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={onFileChange}
+            style={{
+              display: "none",
+            }}
+          />
+        </label>
 
         {file && (
-          <p
+          <div
             style={{
-              marginTop: 10,
-              color: "#475569",
+              marginTop: 15,
+              fontWeight: 600,
             }}
           >
-            Selected: <strong>{file.name}</strong>
-          </p>
+            Selected: {file.name}
+          </div>
         )}
       </div>
 
+      {/* SUCCESS */}
+
+      {message && (
+        <div
+          style={{
+            padding: 15,
+            marginBottom: 20,
+            borderRadius: 8,
+            background: "#dcfce7",
+            color: "#166534",
+            border: "1px solid #86efac",
+            fontWeight: 600,
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {/* ERROR */}
+
+      {error && (
+        <div
+          style={{
+            padding: 15,
+            marginBottom: 20,
+            borderRadius: 8,
+            background: "#fee2e2",
+            color: "#991b1b",
+            border: "1px solid #fca5a5",
+            fontWeight: 600,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {/* EXPECTED COLUMNS */}
+
       <div
-        className="card"
         style={{
-          padding: 25,
-          marginBottom: 20,
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 25,
         }}
       >
-        <h2>Excel Columns</h2>
+        <h3
+          style={{
+            marginTop: 0,
+          }}
+        >
+          Excel Column Names
+        </h3>
 
-        <p style={{ color: "#64748b" }}>
-          Your Excel can contain these columns:
+        <p
+          style={{
+            color: "#64748b",
+          }}
+        >
+          Your first row should contain these headers:
         </p>
 
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
             gap: 8,
+            flexWrap: "wrap",
           }}
         >
           {[
-            "Customer Name",
-            "Company Name",
-            "Phone",
-            "Email",
-            "City",
-            "State",
-            "Product",
-            "Source",
-            "Agent",
-            "Status",
-            "Follow-up Date",
-            "Follow-up Time",
-            "Remarks",
+            "id",
+            "customer_name",
+            "company_name",
+            "phone",
+            "email",
+            "city",
+            "product",
+            "source",
+            "status",
           ].map((column) => (
             <span
               key={column}
               style={{
                 padding: "7px 10px",
+                background: "#eff6ff",
+                color: "#1d4ed8",
                 borderRadius: 6,
-                background: "#f1f5f9",
-                color: "#334155",
                 fontSize: 13,
+                fontWeight: 600,
               }}
             >
               {column}
@@ -539,207 +420,243 @@ export default function ImportLeadsPage() {
 
         <p
           style={{
+            marginBottom: 0,
             marginTop: 15,
             color: "#64748b",
+            fontSize: 13,
           }}
         >
-          <strong>Agent:</strong> Enter the
-          agent name, for example Rahul, Sania,
-          Maryam, Meenakshi or Zaina. The CRM
-          will automatically find the agent ID.
+          Valid status values:{" "}
+          <strong>
+            new, followup, won, lost
+          </strong>
         </p>
       </div>
 
-      {loading && (
-        <div
-          style={{
-            padding: 15,
-            marginBottom: 20,
-            borderRadius: 8,
-            background: "#e0f2fe",
-            color: "#0369a1",
-          }}
-        >
-          Reading Excel file...
-        </div>
-      )}
+      {/* PREVIEW */}
 
       {rows.length > 0 && (
         <div
-          className="card"
           style={{
-            padding: 25,
-            marginBottom: 20,
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 12,
+            overflow: "hidden",
+            marginBottom: 25,
           }}
         >
-          <h2>
-            2. Preview ({rows.length} Leads)
-          </h2>
+          <div
+            style={{
+              padding: 18,
+              borderBottom: "1px solid #e2e8f0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+              }}
+            >
+              Preview
+            </h3>
+
+            <strong>
+              {rows.length} leads
+            </strong>
+          </div>
 
           <div
             style={{
               overflowX: "auto",
-              marginTop: 15,
             }}
           >
-            <table className="table">
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                minWidth: 900,
+              }}
+            >
               <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Company</th>
-                  <th>Phone</th>
-                  <th>Product</th>
-                  <th>Agent</th>
-                  <th>Status</th>
-                  <th>Follow-up</th>
+                <tr
+                  style={{
+                    background: "#f8fafc",
+                  }}
+                >
+                  <th style={thStyle}>
+                    Customer
+                  </th>
+
+                  <th style={thStyle}>
+                    Company
+                  </th>
+
+                  <th style={thStyle}>
+                    Phone
+                  </th>
+
+                  <th style={thStyle}>
+                    Email
+                  </th>
+
+                  <th style={thStyle}>
+                    City
+                  </th>
+
+                  <th style={thStyle}>
+                    Product
+                  </th>
+
+                  <th style={thStyle}>
+                    Source
+                  </th>
+
+                  <th style={thStyle}>
+                    Status
+                  </th>
                 </tr>
               </thead>
 
               <tbody>
-                {rows.slice(0, 100).map(
-                  (row, index) => {
-                    const agent = agents.find(
-                      (a) =>
-                        a.agent_name
-                          .trim()
-                          .toLowerCase() ===
-                        (row.agent_name ?? "")
-                          .trim()
-                          .toLowerCase()
-                    );
+                {rows
+                  .slice(0, 25)
+                  .map((row, index) => (
+                    <tr key={index}>
+                      <td style={tdStyle}>
+                        {clean(
+                          row.customer_name
+                        ) || "-"}
+                      </td>
 
-                    return (
-                      <tr key={index}>
-                        <td>
-                          {row.customer_name ||
-                            "-"}
-                        </td>
+                      <td style={tdStyle}>
+                        {clean(
+                          row.company_name
+                        ) || "-"}
+                      </td>
 
-                        <td>
-                          {row.company_name ||
-                            "-"}
-                        </td>
+                      <td style={tdStyle}>
+                        {clean(row.phone) || "-"}
+                      </td>
 
-                        <td>
-                          {row.phone || "-"}
-                        </td>
+                      <td style={tdStyle}>
+                        {clean(row.email) || "-"}
+                      </td>
 
-                        <td>
-                          {row.product || "-"}
-                        </td>
+                      <td style={tdStyle}>
+                        {clean(row.city) || "-"}
+                      </td>
 
-                        <td>
-                          {row.agent_name ? (
-                            <strong
-                              style={{
-                                color: agent
-                                  ? "green"
-                                  : "red",
-                              }}
-                            >
-                              {row.agent_name}
-                              {agent
-                                ? " ✓"
-                                : " — not found"}
-                            </strong>
-                          ) : (
-                            "Unassigned"
-                          )}
-                        </td>
+                      <td style={tdStyle}>
+                        {clean(row.product) || "-"}
+                      </td>
 
-                        <td>
-                          {row.status}
-                        </td>
+                      <td style={tdStyle}>
+                        {clean(row.source) ||
+                          "Excel Import"}
+                      </td>
 
-                        <td>
-                          {row.next_follow_up_date ||
-                            "-"}
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
+                      <td style={tdStyle}>
+                        {normalizeStatus(
+                          row.status
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
 
-          {rows.length > 100 && (
-            <p
+          {rows.length > 25 && (
+            <div
               style={{
+                padding: 12,
                 color: "#64748b",
-                marginTop: 10,
+                fontSize: 13,
               }}
             >
-              Showing first 100 rows as
-              preview. All {rows.length} rows
-              will be imported.
-            </p>
+              Showing first 25 rows of{" "}
+              {rows.length} total rows.
+            </div>
           )}
         </div>
       )}
 
-      {error && (
+      {/* IMPORT BUTTON */}
+
+      {rows.length > 0 && (
         <div
           style={{
-            padding: 15,
-            marginBottom: 20,
-            borderRadius: 8,
-            background: "#fee2e2",
-            color: "#b91c1c",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 10,
           }}
         >
-          {error}
+          <button
+            type="button"
+            onClick={() => {
+              setRows([]);
+              setFile(null);
+              setMessage("");
+              setError("");
+            }}
+            disabled={loading}
+            style={{
+              padding: "12px 20px",
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              cursor: loading
+                ? "not-allowed"
+                : "pointer",
+            }}
+          >
+            Clear
+          </button>
+
+          <button
+            type="button"
+            onClick={importLeads}
+            disabled={loading}
+            style={{
+              padding: "12px 24px",
+              borderRadius: 8,
+              border: "none",
+              background: loading
+                ? "#94a3b8"
+                : "#16a34a",
+              color: "#fff",
+              cursor: loading
+                ? "not-allowed"
+                : "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {loading
+              ? "Importing..."
+              : `Import ${rows.length} Leads`}
+          </button>
         </div>
       )}
-
-      {success && (
-        <div
-          style={{
-            padding: 15,
-            marginBottom: 20,
-            borderRadius: 8,
-            background: "#dcfce7",
-            color: "#166534",
-          }}
-        >
-          {success}
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-        }}
-      >
-        <button
-          className="btn"
-          onClick={importLeads}
-          disabled={
-            importing ||
-            loading ||
-            rows.length === 0
-          }
-        >
-          {importing
-            ? "Importing..."
-            : `Import ${rows.length || ""} Leads`}
-        </button>
-
-        <button
-          className="btn"
-          style={{
-            background: "#e2e8f0",
-            color: "#0f172a",
-          }}
-          onClick={() =>
-            router.push("/dashboard/leads")
-          }
-          disabled={importing}
-        >
-          Cancel
-        </button>
-      </div>
     </main>
   );
 }
+
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "12px 14px",
+  borderBottom: "1px solid #e2e8f0",
+  fontSize: 13,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  borderBottom: "1px solid #f1f5f9",
+  fontSize: 14,
+  whiteSpace: "nowrap",
+};
