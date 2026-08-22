@@ -1,7 +1,33 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 
-function getFollowupDate(lead: any) {
+type Lead = {
+  id: string;
+  customer_name: string | null;
+  company_name: string | null;
+  phone: string | null;
+  contact_no: string | null;
+  product: string | null;
+  source: string | null;
+  assigned_agent: string | null;
+  assigned_agent_id: string | null;
+  status: string | null;
+  lead_status: string | null;
+  remarks: string | null;
+  notes: string | null;
+  next_followup_at: string | null;
+  next_follow_up_date: string | null;
+  next_follow_up_time: string | null;
+  reminder_enabled: boolean | null;
+};
+
+type Agent = {
+  id: string;
+  agent_name: string;
+};
+
+function getFollowupDate(lead: Lead): Date | null {
+  // First use the combined timestamp
   if (lead.next_followup_at) {
     const date = new Date(lead.next_followup_at);
 
@@ -10,6 +36,7 @@ function getFollowupDate(lead: any) {
     }
   }
 
+  // Fallback to separate date + time
   if (lead.next_follow_up_date) {
     const time = lead.next_follow_up_time || "09:00";
 
@@ -25,7 +52,7 @@ function getFollowupDate(lead: any) {
   return null;
 }
 
-function getRemarks(lead: any) {
+function getLastRemarks(lead: Lead) {
   return (
     lead.remarks?.trim() ||
     lead.notes?.trim() ||
@@ -33,7 +60,7 @@ function getRemarks(lead: any) {
   );
 }
 
-function formatDate(date: Date | null) {
+function formatFollowupDate(date: Date | null) {
   if (!date) return "-";
 
   return date.toLocaleString("en-IN", {
@@ -46,21 +73,52 @@ function formatDate(date: Date | null) {
   });
 }
 
+function getAgentName(
+  lead: Lead,
+  agentMap: Map<string, string>
+) {
+  const agentId =
+    lead.assigned_agent ||
+    lead.assigned_agent_id;
+
+  if (!agentId) {
+    return "Unassigned";
+  }
+
+  return agentMap.get(agentId) || "Unknown Agent";
+}
+
+const thStyle: React.CSSProperties = {
+  padding: "14px 16px",
+  textAlign: "left",
+  fontWeight: 700,
+  color: "#0f172a",
+  background: "#f8fafc",
+  borderBottom: "1px solid #e2e8f0",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "14px 16px",
+  borderBottom: "1px solid #e2e8f0",
+  verticalAlign: "top",
+};
+
 function FollowupTable({
   title,
   leads,
   agentMap,
 }: {
   title: string;
-  leads: any[];
+  leads: Lead[];
   agentMap: Map<string, string>;
 }) {
   return (
     <div
       className="card"
       style={{
-        marginBottom: 25,
         padding: 0,
+        marginBottom: 25,
         overflow: "hidden",
       }}
     >
@@ -94,25 +152,16 @@ function FollowupTable({
           No follow-ups found.
         </div>
       ) : (
-        <div
-          style={{
-            overflowX: "auto",
-          }}
-        >
+        <div style={{ overflowX: "auto" }}>
           <table
             style={{
               width: "100%",
+              minWidth: 1250,
               borderCollapse: "collapse",
-              minWidth: 1200,
             }}
           >
             <thead>
-              <tr
-                style={{
-                  background: "#f8fafc",
-                  textAlign: "left",
-                }}
-              >
+              <tr>
                 <th style={thStyle}>Customer</th>
                 <th style={thStyle}>Company</th>
                 <th style={thStyle}>Phone</th>
@@ -127,84 +176,121 @@ function FollowupTable({
             </thead>
 
             <tbody>
-              {leads.map((lead: any) => {
-                const followup = getFollowupDate(lead);
+              {leads.map((lead) => {
+                const followupDate =
+                  getFollowupDate(lead);
 
-                const agentName = lead.assigned_agent
-                  ? agentMap.get(lead.assigned_agent) ??
-                    "Unknown Agent"
-                  : lead.assigned_agent_id
-                  ? agentMap.get(lead.assigned_agent_id) ??
-                    "Unknown Agent"
-                  : "Unassigned";
+                const remarks =
+                  getLastRemarks(lead);
 
-                const remarks = getRemarks(lead);
+                const agentName =
+                  getAgentName(
+                    lead,
+                    agentMap
+                  );
 
                 return (
                   <tr key={lead.id}>
                     <td style={tdStyle}>
                       <strong>
-                        {lead.customer_name ?? "-"}
+                        {lead.customer_name ||
+                          "-"}
                       </strong>
                     </td>
 
                     <td style={tdStyle}>
-                      {lead.company_name ?? "-"}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {lead.phone ??
-                        lead.contact_no ??
+                      {lead.company_name ||
                         "-"}
                     </td>
 
                     <td style={tdStyle}>
-                      {lead.product ?? "-"}
+                      {lead.phone ||
+                        lead.contact_no ||
+                        "-"}
                     </td>
 
                     <td style={tdStyle}>
-                      <strong>{agentName}</strong>
+                      {lead.product || "-"}
+                    </td>
+
+                    <td style={tdStyle}>
+                      <strong>
+                        {agentName}
+                      </strong>
                     </td>
 
                     <td style={tdStyle}>
                       <span
                         style={{
-                          display: "inline-block",
-                          padding: "5px 10px",
+                          display:
+                            "inline-block",
+                          padding:
+                            "5px 10px",
                           borderRadius: 20,
                           background:
-                            lead.status === "followup"
+                            lead.status ===
+                            "followup"
                               ? "#fef3c7"
                               : "#dbeafe",
                           color:
-                            lead.status === "followup"
+                            lead.status ===
+                            "followup"
                               ? "#92400e"
                               : "#1d4ed8",
-                          fontWeight: 600,
+                          fontWeight: 700,
                           fontSize: 13,
                         }}
                       >
-                        {lead.status ??
-                          lead.lead_status ??
+                        {lead.status ||
+                          lead.lead_status ||
                           "new"}
                       </span>
                     </td>
 
                     <td style={tdStyle}>
-                      <strong>
-                        {formatDate(followup)}
+                      <strong
+                        style={{
+                          color:
+                            followupDate &&
+                            followupDate.getTime() <
+                              Date.now()
+                              ? "#dc2626"
+                              : "#0f172a",
+                        }}
+                      >
+                        {formatFollowupDate(
+                          followupDate
+                        )}
                       </strong>
+
+                      {followupDate &&
+                        followupDate.getTime() <
+                          Date.now() && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              color:
+                                "#dc2626",
+                              fontSize: 12,
+                              fontWeight: 700,
+                            }}
+                          >
+                            OVERDUE
+                          </div>
+                        )}
                     </td>
 
                     <td
                       style={{
                         ...tdStyle,
-                        maxWidth: 300,
-                        whiteSpace: "normal",
+                        maxWidth: 320,
+                        minWidth: 220,
                       }}
                     >
                       <div
                         style={{
+                          whiteSpace:
+                            "pre-wrap",
                           lineHeight: 1.5,
                           color:
                             remarks === "-"
@@ -220,7 +306,8 @@ function FollowupTable({
                       {lead.reminder_enabled ? (
                         <span
                           style={{
-                            color: "#16a34a",
+                            color:
+                              "#16a34a",
                             fontWeight: 700,
                           }}
                         >
@@ -229,7 +316,8 @@ function FollowupTable({
                       ) : (
                         <span
                           style={{
-                            color: "#94a3b8",
+                            color:
+                              "#94a3b8",
                           }}
                         >
                           OFF
@@ -242,9 +330,12 @@ function FollowupTable({
                         href={`/dashboard/leads/${lead.id}/edit`}
                         className="btn"
                         style={{
-                          display: "inline-block",
-                          textDecoration: "none",
-                          padding: "8px 14px",
+                          display:
+                            "inline-block",
+                          textDecoration:
+                            "none",
+                          padding:
+                            "8px 14px",
                         }}
                       >
                         Edit
@@ -261,37 +352,76 @@ function FollowupTable({
   );
 }
 
-const thStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  fontWeight: 700,
-  color: "#0f172a",
-  borderBottom: "1px solid #e2e8f0",
-  whiteSpace: "nowrap",
-};
+function SummaryCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: number;
+}) {
+  return (
+    <div
+      style={{
+        padding: 20,
+        border:
+          "1px solid #e2e8f0",
+        borderRadius: 10,
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          color: "#64748b",
+          marginBottom: 5,
+        }}
+      >
+        {title}
+      </div>
 
-const tdStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  borderBottom: "1px solid #e2e8f0",
-  color: "#1e293b",
-  verticalAlign: "top",
-};
+      <strong
+        style={{
+          fontSize: 28,
+          color: "#0f172a",
+        }}
+      >
+        {value}
+      </strong>
+    </div>
+  );
+}
 
 export default async function FollowupsPage() {
   const sb = await createClient();
 
-  const { data: leads, error: leadsError } = await sb
+  // Load ALL leads first.
+  // We do NOT filter only next_followup_at here,
+  // because some leads may use date/time columns.
+  const {
+    data: leadData,
+    error: leadsError,
+  } = await sb
     .from("leads")
-    .select("*")
-    .not("next_followup_at", "is", null)
-    .order("next_followup_at", {
-      ascending: true,
-    });
-
-  const { data: agents, error: agentsError } = await sb
-    .from("agent_profiles")
-    .select("id, agent_name")
-    .order("agent_name", {
-      ascending: true,
+    .select(`
+      id,
+      customer_name,
+      company_name,
+      phone,
+      contact_no,
+      product,
+      source,
+      assigned_agent,
+      assigned_agent_id,
+      status,
+      lead_status,
+      remarks,
+      notes,
+      next_followup_at,
+      next_follow_up_date,
+      next_follow_up_time,
+      reminder_enabled
+    `)
+    .order("created_at", {
+      ascending: false,
     });
 
   if (leadsError) {
@@ -301,19 +431,40 @@ export default async function FollowupsPage() {
 
         <div
           style={{
-            padding: 15,
             marginTop: 20,
+            padding: 20,
             background: "#fee2e2",
             color: "#991b1b",
-            borderRadius: 8,
+            borderRadius: 10,
           }}
         >
-          Error loading follow-ups:{" "}
-          {leadsError.message}
+          <strong>
+            Error loading follow-ups
+          </strong>
+
+          <p>
+            {leadsError.message}
+          </p>
         </div>
       </main>
     );
   }
+
+  const leads = (leadData ||
+    []) as Lead[];
+
+  // Load agents
+  const {
+    data: agentData,
+    error: agentsError,
+  } = await sb
+    .from("agent_profiles")
+    .select(
+      "id, agent_name"
+    )
+    .order("agent_name", {
+      ascending: true,
+    });
 
   if (agentsError) {
     return (
@@ -322,55 +473,109 @@ export default async function FollowupsPage() {
 
         <div
           style={{
-            padding: 15,
             marginTop: 20,
+            padding: 20,
             background: "#fee2e2",
             color: "#991b1b",
-            borderRadius: 8,
+            borderRadius: 10,
           }}
         >
-          Error loading agents:{" "}
-          {agentsError.message}
+          <strong>
+            Error loading agents
+          </strong>
+
+          <p>
+            {agentsError.message}
+          </p>
         </div>
       </main>
     );
   }
 
-  const agentMap = new Map(
-    (agents ?? []).map((agent: any) => [
-      agent.id,
-      agent.agent_name,
-    ])
-  );
+  const agentMap =
+    new Map<string, string>(
+      (agentData || []).map(
+        (agent: Agent) => [
+          agent.id,
+          agent.agent_name,
+        ]
+      )
+    );
 
   const now = new Date();
 
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday =
+    new Date(now);
 
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
+  startOfToday.setHours(
+    0,
+    0,
+    0,
+    0
+  );
 
-  const today: any[] = [];
-  const upcoming: any[] = [];
-  const overdue: any[] = [];
+  const endOfToday =
+    new Date(now);
 
-  for (const lead of leads ?? []) {
-    const date = getFollowupDate(lead);
+  endOfToday.setHours(
+    23,
+    59,
+    59,
+    999
+  );
 
+  const today: Lead[] = [];
+  const upcoming: Lead[] = [];
+  const overdue: Lead[] = [];
+
+  for (const lead of leads) {
+    const date =
+      getFollowupDate(lead);
+
+    // No follow-up date = don't show
     if (!date) continue;
 
-    if (date < startOfToday) {
+    if (
+      date.getTime() <
+      startOfToday.getTime()
+    ) {
       overdue.push(lead);
     } else if (
-      date >= startOfToday &&
-      date <= endOfToday
+      date.getTime() >=
+        startOfToday.getTime() &&
+      date.getTime() <=
+        endOfToday.getTime()
     ) {
       today.push(lead);
     } else {
       upcoming.push(lead);
     }
   }
+
+  // Sort by follow-up date
+  const sortByDate = (
+    a: Lead,
+    b: Lead
+  ) => {
+    const dateA =
+      getFollowupDate(a)?.getTime() ??
+      0;
+
+    const dateB =
+      getFollowupDate(b)?.getTime() ??
+      0;
+
+    return dateA - dateB;
+  };
+
+  today.sort(sortByDate);
+  upcoming.sort(sortByDate);
+  overdue.sort(sortByDate);
+
+  const totalFollowups =
+    today.length +
+    upcoming.length +
+    overdue.length;
 
   return (
     <main style={{ padding: 30 }}>
@@ -379,7 +584,8 @@ export default async function FollowupsPage() {
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           alignItems: "center",
           gap: 15,
           marginBottom: 30,
@@ -397,7 +603,8 @@ export default async function FollowupsPage() {
               color: "#64748b",
             }}
           >
-            Manage today's, upcoming and overdue
+            Manage today's,
+            upcoming and overdue
             follow-ups
           </p>
         </div>
@@ -406,7 +613,8 @@ export default async function FollowupsPage() {
           href="/dashboard/leads"
           className="btn"
           style={{
-            textDecoration: "none",
+            textDecoration:
+              "none",
           }}
         >
           ← All Leads
@@ -441,11 +649,7 @@ export default async function FollowupsPage() {
 
         <SummaryCard
           title="Total Follow-ups"
-          value={
-            today.length +
-            upcoming.length +
-            overdue.length
-          }
+          value={totalFollowups}
         />
       </div>
 
@@ -473,42 +677,5 @@ export default async function FollowupsPage() {
         agentMap={agentMap}
       />
     </main>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number;
-}) {
-  return (
-    <div
-      style={{
-        padding: 20,
-        border: "1px solid #e2e8f0",
-        borderRadius: 10,
-        background: "#fff",
-      }}
-    >
-      <div
-        style={{
-          color: "#64748b",
-          marginBottom: 5,
-        }}
-      >
-        {title}
-      </div>
-
-      <strong
-        style={{
-          fontSize: 28,
-          color: "#0f172a",
-        }}
-      >
-        {value}
-      </strong>
-    </div>
   );
 }
