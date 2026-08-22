@@ -1,79 +1,266 @@
- "use client";
+"use client";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [resetEmail, setResetEmail] = useState("");
-  const [showReset, setShowReset] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
+export default function LoginPage() {
   const router = useRouter();
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(""); setMessage(""); setLoading(true);
-    const { error } = await supabaseBrowser().auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) { setError(error.message); return; }
-    router.push("/dashboard"); router.refresh();
-  }
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  async function sendReset(e: FormEvent) {
+  async function handleLogin(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
-    setError(""); setMessage("");
-    if (!resetEmail) { setError("Please enter your email address."); return; }
-    setResetLoading(true);
-    const { error } = await supabaseBrowser().auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/update-password`,
-    });
-    setResetLoading(false);
-    if (error) { setError(error.message); return; }
-    setMessage("Password reset email sent. Check your inbox and spam folder.");
+
+    setError("");
+    setMessage("");
+    setLoading(true);
+
+    try {
+      // IMPORTANT:
+      // supabaseBrowser is already a Supabase client.
+      // Do NOT use supabaseBrowser().
+      const supabase = supabaseBrowser;
+
+      const { error: loginError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+      if (loginError) {
+        setError(loginError.message);
+        return;
+      }
+
+      setMessage("Login successful.");
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Login failed."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <main className="login">
-      <form className="loginbox" onSubmit={showReset ? sendReset : submit}>
-        <div className="brand">MF India CRM</div>
-        <div className="tag">Cure with Care</div>
-        <h2>{showReset ? "Reset password" : "Sign in"}</h2>
-        {error && <div className="error">{error}</div>}
-        {message && <div className="success">{message}</div>}
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        background: "#f8fafc",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 14,
+          padding: 30,
+          boxShadow:
+            "0 8px 30px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: 28,
+          }}
+        >
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 30,
+              fontWeight: 700,
+              color: "#0f172a",
+            }}
+          >
+            MF India CRM
+          </h1>
 
-        <div className="field">
-          <label>Email</label>
-          <input className="input" type="email"
-            value={showReset ? resetEmail : email}
-            onChange={(e) => showReset ? setResetEmail(e.target.value) : setEmail(e.target.value)}
-            required />
+          <p
+            style={{
+              marginTop: 8,
+              color: "#64748b",
+            }}
+          >
+            Sign in to your account
+          </p>
         </div>
 
-        {!showReset && (
-          <div className="field" style={{ marginTop: 14 }}>
-            <label>Password</label>
-            <input className="input" type="password" value={password}
-              onChange={(e) => setPassword(e.target.value)} required />
+        {error && (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 8,
+              background: "#fee2e2",
+              border: "1px solid #fecaca",
+              color: "#991b1b",
+              fontSize: 14,
+            }}
+          >
+            {error}
           </div>
         )}
 
-        <button className="btn" style={{ width: "100%", marginTop: 18 }}
-          disabled={loading || resetLoading}>
-          {showReset ? (resetLoading ? "Sending..." : "Send Reset Link")
-                     : (loading ? "Signing in..." : "Login")}
-        </button>
+        {message && (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 8,
+              background: "#dcfce7",
+              border: "1px solid #bbf7d0",
+              color: "#166534",
+              fontSize: 14,
+            }}
+          >
+            {message}
+          </div>
+        )}
 
-        <button type="button"
-          onClick={() => { setShowReset(!showReset); setError(""); setMessage(""); setResetEmail(email); }}
-          style={{ width:"100%", marginTop:12, background:"transparent", border:0, color:"#1769e0", cursor:"pointer", fontWeight:600 }}>
-          {showReset ? "Back to Login" : "Forgot Password?"}
-        </button>
-      </form>
+        <form onSubmit={handleLogin}>
+          <div style={{ marginBottom: 18 }}>
+            <label
+              htmlFor="email"
+              style={{
+                display: "block",
+                marginBottom: 7,
+                fontWeight: 600,
+                color: "#334155",
+              }}
+            >
+              Email Address
+            </label>
+
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              placeholder="Enter your email"
+              autoComplete="email"
+              required
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "12px 14px",
+                borderRadius: 8,
+                border:
+                  "1px solid #cbd5e1",
+                outline: "none",
+                fontSize: 15,
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 10 }}>
+            <label
+              htmlFor="password"
+              style={{
+                display: "block",
+                marginBottom: 7,
+                fontWeight: 600,
+                color: "#334155",
+              }}
+            >
+              Password
+            </label>
+
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              required
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "12px 14px",
+                borderRadius: 8,
+                border:
+                  "1px solid #cbd5e1",
+                outline: "none",
+                fontSize: 15,
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              textAlign: "right",
+              marginBottom: 22,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  "/forgot-password"
+                )
+              }
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#2563eb",
+                cursor: "pointer",
+                fontSize: 14,
+                padding: 0,
+              }}
+            >
+              Forgot Password?
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: "13px 16px",
+              border: "none",
+              borderRadius: 8,
+              background: "#111827",
+              color: "#fff",
+              fontWeight: 600,
+              fontSize: 15,
+              cursor: loading
+                ? "not-allowed"
+                : "pointer",
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading
+              ? "Signing in..."
+              : "Sign In"}
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
