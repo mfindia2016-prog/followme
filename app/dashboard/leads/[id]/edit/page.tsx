@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+type LeadStatus = "new" | "followup" | "won" | "lost";
+
 type Lead = {
   id: string;
   customer_name: string | null;
@@ -13,7 +15,7 @@ type Lead = {
   city: string | null;
   product: string | null;
   source: string | null;
-  status: "new" | "followup" | "won" | "lost" | null;
+  status: LeadStatus | null;
 };
 
 export default function EditLeadPage() {
@@ -23,10 +25,12 @@ export default function EditLeadPage() {
   const id = params?.id as string;
 
   const [lead, setLead] = useState<Lead | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const [customerName, setCustomerName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -35,14 +39,12 @@ export default function EditLeadPage() {
   const [city, setCity] = useState("");
   const [product, setProduct] = useState("");
   const [source, setSource] = useState("");
-  const [status, setStatus] = useState<
-    "new" | "followup" | "won" | "lost"
-  >("new");
+  const [status, setStatus] = useState<LeadStatus>("new");
 
   useEffect(() => {
-    if (!id) return;
-
-    loadLead();
+    if (id) {
+      loadLead();
+    }
   }, [id]);
 
   async function loadLead() {
@@ -50,10 +52,12 @@ export default function EditLeadPage() {
       setLoading(true);
       setError("");
 
-      // IMPORTANT:
-      // supabaseBrowser is a FUNCTION.
-      // Only call it ONCE.
-      const supabase = supabaseBrowser();
+      /*
+       * IMPORTANT:
+       * supabaseBrowser is already a Supabase client.
+       * DO NOT use supabaseBrowser().
+       */
+      const supabase = supabaseBrowser;
 
       const { data, error: leadError } = await supabase
         .from("leads")
@@ -93,13 +97,16 @@ export default function EditLeadPage() {
       setProduct(loadedLead.product ?? "");
       setSource(loadedLead.source ?? "");
 
-      setStatus(
+      if (
+        loadedLead.status === "new" ||
         loadedLead.status === "followup" ||
-          loadedLead.status === "won" ||
-          loadedLead.status === "lost"
-          ? loadedLead.status
-          : "new"
-      );
+        loadedLead.status === "won" ||
+        loadedLead.status === "lost"
+      ) {
+        setStatus(loadedLead.status);
+      } else {
+        setStatus("new");
+      }
     } catch (err) {
       console.error(err);
 
@@ -113,7 +120,9 @@ export default function EditLeadPage() {
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     try {
@@ -121,9 +130,11 @@ export default function EditLeadPage() {
       setError("");
       setMessage("");
 
-      // IMPORTANT:
-      // Create Supabase client only once.
-      const supabase = supabaseBrowser();
+      /*
+       * IMPORTANT:
+       * Again, no brackets.
+       */
+      const supabase = supabaseBrowser;
 
       const { error: updateError } = await supabase
         .from("leads")
@@ -164,9 +175,9 @@ export default function EditLeadPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="rounded-xl border border-gray-800 bg-gray-950 p-8">
+      <div className="min-h-screen bg-black p-8 text-white">
+        <div className="mx-auto max-w-5xl">
+          <div className="rounded-2xl border border-gray-800 bg-gray-950 p-8">
             <p className="text-gray-400">
               Loading lead...
             </p>
@@ -176,12 +187,12 @@ export default function EditLeadPage() {
     );
   }
 
-  if (error && !lead) {
+  if (!lead && error) {
     return (
-      <div className="min-h-screen bg-black text-white p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="rounded-xl border border-red-800 bg-red-950/30 p-8">
-            <h1 className="text-xl font-semibold text-red-400">
+      <div className="min-h-screen bg-black p-8 text-white">
+        <div className="mx-auto max-w-5xl">
+          <div className="rounded-2xl border border-red-800 bg-red-950/30 p-8">
+            <h1 className="text-xl font-bold text-red-400">
               Unable to load lead
             </h1>
 
@@ -191,8 +202,10 @@ export default function EditLeadPage() {
 
             <button
               type="button"
-              onClick={() => router.push("/dashboard/leads")}
-              className="mt-6 rounded-lg bg-white px-5 py-2.5 font-medium text-black hover:bg-gray-200"
+              onClick={() =>
+                router.push("/dashboard/leads")
+              }
+              className="mt-6 rounded-lg bg-white px-5 py-3 font-semibold text-black"
             >
               Back to Leads
             </button>
@@ -203,12 +216,13 @@ export default function EditLeadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8">
+    <div className="min-h-screen bg-black p-4 text-white md:p-8">
       <div className="mx-auto max-w-5xl">
-        {/* Header */}
+
+        {/* HEADER */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm font-medium text-gray-500">
               MF INDIA CRM
             </p>
 
@@ -217,33 +231,36 @@ export default function EditLeadPage() {
             </h1>
 
             <p className="mt-2 text-gray-400">
-              Update customer and follow-up information
+              Update customer and lead information
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => router.push("/dashboard/leads")}
-            className="rounded-lg border border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-900"
+            onClick={() =>
+              router.push("/dashboard/leads")
+            }
+            className="rounded-lg border border-gray-700 px-5 py-3 text-sm font-medium text-gray-200 hover:bg-gray-900"
           >
             ← Back to Leads
           </button>
         </div>
 
-        {/* Messages */}
+        {/* SUCCESS MESSAGE */}
         {message && (
-          <div className="mb-6 rounded-lg border border-green-700 bg-green-950/30 px-4 py-3 text-green-400">
+          <div className="mb-6 rounded-lg border border-green-700 bg-green-950/40 px-5 py-4 text-green-400">
             {message}
           </div>
         )}
 
+        {/* ERROR MESSAGE */}
         {error && (
-          <div className="mb-6 rounded-lg border border-red-700 bg-red-950/30 px-4 py-3 text-red-400">
+          <div className="mb-6 rounded-lg border border-red-700 bg-red-950/40 px-5 py-4 text-red-400">
             {error}
           </div>
         )}
 
-        {/* Form */}
+        {/* FORM */}
         <form
           onSubmit={handleSubmit}
           className="rounded-2xl border border-gray-800 bg-gray-950 p-5 md:p-8"
@@ -254,12 +271,13 @@ export default function EditLeadPage() {
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Enter the lead details below.
+              Update the lead details below.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* Customer Name */}
+
+            {/* CUSTOMER NAME */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Customer Name
@@ -276,7 +294,7 @@ export default function EditLeadPage() {
               />
             </div>
 
-            {/* Company */}
+            {/* COMPANY */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Company / Hospital
@@ -293,7 +311,7 @@ export default function EditLeadPage() {
               />
             </div>
 
-            {/* Phone */}
+            {/* PHONE */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Phone Number
@@ -310,7 +328,7 @@ export default function EditLeadPage() {
               />
             </div>
 
-            {/* Email */}
+            {/* EMAIL */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Email
@@ -327,7 +345,7 @@ export default function EditLeadPage() {
               />
             </div>
 
-            {/* City */}
+            {/* CITY */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 City
@@ -344,7 +362,7 @@ export default function EditLeadPage() {
               />
             </div>
 
-            {/* Product */}
+            {/* PRODUCT */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Product
@@ -356,12 +374,12 @@ export default function EditLeadPage() {
                 onChange={(e) =>
                   setProduct(e.target.value)
                 }
-                placeholder="OT Table, ECG Machine, etc."
+                placeholder="OT Table / ECG Machine"
                 className="w-full rounded-lg border border-gray-700 bg-black px-4 py-3 text-white outline-none placeholder:text-gray-600 focus:border-white"
               />
             </div>
 
-            {/* Source */}
+            {/* SOURCE */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Lead Source
@@ -375,7 +393,7 @@ export default function EditLeadPage() {
                 className="w-full rounded-lg border border-gray-700 bg-black px-4 py-3 text-white outline-none focus:border-white"
               >
                 <option value="">
-                  Select source
+                  Select Source
                 </option>
 
                 <option value="Website">
@@ -404,7 +422,7 @@ export default function EditLeadPage() {
               </select>
             </div>
 
-            {/* Status */}
+            {/* STATUS */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Lead Status
@@ -414,11 +432,7 @@ export default function EditLeadPage() {
                 value={status}
                 onChange={(e) =>
                   setStatus(
-                    e.target.value as
-                      | "new"
-                      | "followup"
-                      | "won"
-                      | "lost"
+                    e.target.value as LeadStatus
                   )
                 }
                 className="w-full rounded-lg border border-gray-700 bg-black px-4 py-3 text-white outline-none focus:border-white"
@@ -442,10 +456,11 @@ export default function EditLeadPage() {
             </div>
           </div>
 
-          {/* Status explanation */}
+          {/* STATUS CARDS */}
           <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-blue-900 bg-blue-950/30 p-3">
-              <div className="text-sm font-semibold text-blue-400">
+
+            <div className="rounded-lg border border-blue-900 bg-blue-950/30 p-4">
+              <div className="font-semibold text-blue-400">
                 New
               </div>
               <div className="mt-1 text-xs text-gray-500">
@@ -453,42 +468,43 @@ export default function EditLeadPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-yellow-900 bg-yellow-950/30 p-3">
-              <div className="text-sm font-semibold text-yellow-400">
+            <div className="rounded-lg border border-yellow-900 bg-yellow-950/30 p-4">
+              <div className="font-semibold text-yellow-400">
                 Follow-up
               </div>
               <div className="mt-1 text-xs text-gray-500">
-                Need follow-up
+                Follow-up required
               </div>
             </div>
 
-            <div className="rounded-lg border border-green-900 bg-green-950/30 p-3">
-              <div className="text-sm font-semibold text-green-400">
+            <div className="rounded-lg border border-green-900 bg-green-950/30 p-4">
+              <div className="font-semibold text-green-400">
                 Won
               </div>
               <div className="mt-1 text-xs text-gray-500">
-                Converted
+                Lead converted
               </div>
             </div>
 
-            <div className="rounded-lg border border-red-900 bg-red-950/30 p-3">
-              <div className="text-sm font-semibold text-red-400">
+            <div className="rounded-lg border border-red-900 bg-red-950/30 p-4">
+              <div className="font-semibold text-red-400">
                 Lost
               </div>
               <div className="mt-1 text-xs text-gray-500">
-                Closed / lost
+                Lead closed
               </div>
             </div>
           </div>
 
-          {/* Buttons */}
+          {/* BUTTONS */}
           <div className="mt-10 flex flex-col-reverse gap-3 border-t border-gray-800 pt-6 sm:flex-row sm:justify-end">
+
             <button
               type="button"
+              disabled={saving}
               onClick={() =>
                 router.push("/dashboard/leads")
               }
-              disabled={saving}
               className="rounded-lg border border-gray-700 px-6 py-3 font-medium text-gray-300 hover:bg-gray-900 disabled:opacity-50"
             >
               Cancel
@@ -503,13 +519,15 @@ export default function EditLeadPage() {
                 ? "Saving..."
                 : "Save Changes"}
             </button>
+
           </div>
         </form>
 
-        {/* Lead ID */}
+        {/* LEAD ID */}
         <div className="mt-4 text-center text-xs text-gray-600">
           Lead ID: {lead?.id ?? id}
         </div>
+
       </div>
     </div>
   );
