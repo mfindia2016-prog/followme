@@ -15,7 +15,7 @@ export default function UpdatePassword() {
 
   useEffect(() => {
     const supabase = supabaseBrowser();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session) => {
       if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || session) setReady(true);
     });
     supabase.auth.getSession().then(({ data }) => { if (data.session) setReady(true); });
