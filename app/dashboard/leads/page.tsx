@@ -1,84 +1,264 @@
+"use client";
+
 import Link from "next/link";
-import { createClient } from "@/lib/supabase-server";
+import { useEffect, useMemo, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default async function Leads() {
-  const sb = await createClient();
+type Lead = {
+  id: string;
+  customer_name: string | null;
+  company_name: string | null;
+  phone: string | null;
+  contact_no: string | null;
+  product: string | null;
+  source: string | null;
+
+  assigned_agent: string | null;
+  assigned_agent_id: string | null;
+
+  status: string | null;
+  lead_status: string | null;
+
+  next_followup_at: string | null;
+  next_follow_up_date: string | null;
+  next_follow_up_time: string | null;
+
+  reminder_enabled: boolean | null;
+
+  remarks: string | null;
+  notes: string | null;
+
+  created_at: string;
+};
+
+type Agent = {
+  id: string;
+  agent_name: string;
+  is_active: boolean;
+};
+
+export default function Leads() {
+  const supabase = useMemo(
+    () => supabaseBrowser(),
+    []
+  );
+
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   // --------------------------------------------------
-  // LOAD LEADS
+  // FILTERS
   // --------------------------------------------------
 
-  const { data: leads, error: leadsError } = await sb
-    .from("leads")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const [agentFilter, setAgentFilter] =
+    useState("");
+
+  const [productSearch, setProductSearch] =
+    useState("");
 
   // --------------------------------------------------
-  // LOAD ACTIVE AGENTS
+  // LOAD DATA
   // --------------------------------------------------
 
-  const { data: agents, error: agentsError } = await sb
-    .from("agent_profiles")
-    .select("id, agent_name, is_active")
-    .eq("is_active", true)
-    .order("agent_name", { ascending: true });
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      setError("");
 
-  // --------------------------------------------------
-  // LEADS ERROR
-  // --------------------------------------------------
+      try {
+        const [
+          leadsResult,
+          agentsResult,
+        ] = await Promise.all([
+          supabase
+            .from("leads")
+            .select("*")
+            .order("created_at", {
+              ascending: false,
+            }),
 
-  if (leadsError) {
-    return (
-      <main style={{ padding: 30 }}>
-        <h1>Leads</h1>
+          supabase
+            .from("agent_profiles")
+            .select(
+              "id, agent_name, is_active"
+            )
+            .eq("is_active", true)
+            .order("agent_name", {
+              ascending: true,
+            }),
+        ]);
 
-        <p style={{ color: "red" }}>
-          Error loading leads: {leadsError.message}
-        </p>
-      </main>
-    );
-  }
+        if (leadsResult.error) {
+          throw new Error(
+            leadsResult.error.message
+          );
+        }
 
-  // --------------------------------------------------
-  // AGENTS ERROR
-  // --------------------------------------------------
+        if (agentsResult.error) {
+          throw new Error(
+            agentsResult.error.message
+          );
+        }
 
-  if (agentsError) {
-    return (
-      <main style={{ padding: 30 }}>
-        <h1>Leads</h1>
+        setLeads(
+          (leadsResult.data ??
+            []) as Lead[]
+        );
 
-        <p style={{ color: "red" }}>
-          Error loading agents: {agentsError.message}
-        </p>
-      </main>
-    );
-  }
+        setAgents(
+          (agentsResult.data ??
+            []) as Agent[]
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load leads."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [supabase]);
 
   // --------------------------------------------------
   // AGENT LOOKUP
   // --------------------------------------------------
 
-  const agentMap = new Map(
-    (agents ?? []).map((agent: any) => [
-      agent.id,
-      agent.agent_name,
-    ])
-  );
+  const agentMap = useMemo(() => {
+    return new Map(
+      agents.map((agent) => [
+        agent.id,
+        agent.agent_name,
+      ])
+    );
+  }, [agents]);
 
   // --------------------------------------------------
-  // SUMMARY COUNTS
+  // FILTER LEADS
   // --------------------------------------------------
 
-  const totalLeads = leads?.length ?? 0;
+  const filteredLeads = useMemo(() => {
+    const search =
+      productSearch
+        .trim()
+        .toLowerCase();
 
-  const activeAgents = agents?.length ?? 0;
+    return leads.filter((lead) => {
+      // ----------------------------------------------
+      // AGENT FILTER
+      // ----------------------------------------------
 
-  const followUps = (leads ?? []).filter(
-    (lead: any) =>
-      lead.next_followup_at ||
-      lead.next_follow_up_date
-  ).length;
+      const matchesAgent =
+        !agentFilter ||
+        lead.assigned_agent_id ===
+          agentFilter;
+
+      // ----------------------------------------------
+      // PRODUCT PARTIAL SEARCH
+      // ----------------------------------------------
+
+      const product =
+        lead.product
+          ?.toLowerCase() ?? "";
+
+      const matchesProduct =
+        !search ||
+        product.includes(search);
+
+      return (
+        matchesAgent &&
+        matchesProduct
+      );
+    });
+  }, [
+    leads,
+    agentFilter,
+    productSearch,
+  ]);
+
+  // --------------------------------------------------
+  // COUNTS
+  // --------------------------------------------------
+
+  const totalLeads =
+    leads.length;
+
+  const filteredCount =
+    filteredLeads.length;
+
+  const activeAgents =
+    agents.length;
+
+  const followUps =
+    filteredLeads.filter(
+      (lead) =>
+        lead.next_followup_at ||
+        lead.next_follow_up_date
+    ).length;
+
+  // --------------------------------------------------
+  // RESET FILTERS
+  // --------------------------------------------------
+
+  function resetFilters() {
+    setAgentFilter("");
+    setProductSearch("");
+  }
+
+  // --------------------------------------------------
+  // LOADING
+  // --------------------------------------------------
+
+  if (loading) {
+    return (
+      <main style={{ padding: 30 }}>
+        <h1>Lead Management</h1>
+
+        <div
+          className="card"
+          style={{ marginTop: 20 }}
+        >
+          <p>
+            Loading leads...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // --------------------------------------------------
+  // ERROR
+  // --------------------------------------------------
+
+  if (error) {
+    return (
+      <main style={{ padding: 30 }}>
+        <h1>Lead Management</h1>
+
+        <div
+          style={{
+            marginTop: 20,
+            padding: 20,
+            borderRadius: 10,
+            background: "#fee2e2",
+            color: "#991b1b",
+          }}
+        >
+          <strong>
+            Error loading leads
+          </strong>
+
+          <p>{error}</p>
+        </div>
+      </main>
+    );
+  }
 
   // --------------------------------------------------
   // PAGE
@@ -86,6 +266,7 @@ export default async function Leads() {
 
   return (
     <main style={{ padding: 30 }}>
+
       {/* ==================================================
           HEADER
       ================================================== */}
@@ -93,7 +274,8 @@ export default async function Leads() {
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           alignItems: "center",
           marginBottom: 25,
           gap: 15,
@@ -112,7 +294,8 @@ export default async function Leads() {
               marginBottom: 0,
             }}
           >
-            Manage leads, agents and follow-ups
+            Manage leads, agents and
+            follow-ups
           </p>
         </div>
 
@@ -149,6 +332,220 @@ export default async function Leads() {
       </div>
 
       {/* ==================================================
+          FILTER PANEL
+      ================================================== */}
+
+      <div
+        className="card"
+        style={{
+          marginBottom: 25,
+        }}
+      >
+        <h2
+          style={{
+            marginTop: 0,
+            marginBottom: 18,
+          }}
+        >
+          Lead Filters
+        </h2>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(250px, 1fr))",
+            gap: 15,
+            alignItems: "end",
+          }}
+        >
+
+          {/* AGENT FILTER */}
+
+          <div className="field">
+            <label>
+              Filter by Agent
+            </label>
+
+            <select
+              className="input"
+              value={agentFilter}
+              onChange={(e) =>
+                setAgentFilter(
+                  e.target.value
+                )
+              }
+            >
+              <option value="">
+                All Agents
+              </option>
+
+              {agents.map((agent) => (
+                <option
+                  key={agent.id}
+                  value={agent.id}
+                >
+                  {agent.agent_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* PRODUCT SEARCH */}
+
+          <div className="field">
+            <label>
+              Search Product
+            </label>
+
+            <input
+              className="input"
+              value={productSearch}
+              onChange={(e) =>
+                setProductSearch(
+                  e.target.value
+                )
+              }
+              placeholder="Type OT, Table, ECG..."
+            />
+
+            <small
+              style={{
+                display: "block",
+                marginTop: 6,
+                color: "#64748b",
+              }}
+            >
+              Partial search: OT will find
+              OT Table, OT Light, etc.
+            </small>
+          </div>
+
+          {/* RESET */}
+
+          <div>
+            <button
+              type="button"
+              className="btn"
+              onClick={
+                resetFilters
+              }
+              disabled={
+                !agentFilter &&
+                !productSearch
+              }
+              style={{
+                background:
+                  "#e2e8f0",
+                color: "#0f172a",
+              }}
+            >
+              Reset Filters
+            </button>
+          </div>
+        </div>
+
+        {/* FILTER RESULT */}
+
+        <div
+          style={{
+            marginTop: 20,
+            padding: 15,
+            borderRadius: 8,
+            background: "#f8fafc",
+            border:
+              "1px solid #e2e8f0",
+            display: "flex",
+            gap: 25,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <span
+              style={{
+                color: "#64748b",
+              }}
+            >
+              Total Queries
+            </span>
+
+            <strong
+              style={{
+                display: "block",
+                fontSize: 24,
+              }}
+            >
+              {totalLeads}
+            </strong>
+          </div>
+
+          <div>
+            <span
+              style={{
+                color: "#64748b",
+              }}
+            >
+              Filtered Queries
+            </span>
+
+            <strong
+              style={{
+                display: "block",
+                fontSize: 24,
+              }}
+            >
+              {filteredCount}
+            </strong>
+          </div>
+
+          {agentFilter && (
+            <div>
+              <span
+                style={{
+                  color: "#64748b",
+                }}
+              >
+                Selected Agent
+              </span>
+
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: 18,
+                }}
+              >
+                {agentMap.get(
+                  agentFilter
+                ) ??
+                  "Unknown Agent"}
+              </strong>
+            </div>
+          )}
+
+          {productSearch && (
+            <div>
+              <span
+                style={{
+                  color: "#64748b",
+                }}
+              >
+                Product Search
+              </span>
+
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: 18,
+                }}
+              >
+                {productSearch}
+              </strong>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ==================================================
           SUMMARY CARDS
       ================================================== */}
 
@@ -161,17 +558,23 @@ export default async function Leads() {
           marginBottom: 25,
         }}
       >
-        {/* TOTAL LEADS */}
+
+        {/* TOTAL */}
 
         <div
           style={{
             padding: 18,
-            border: "1px solid #ddd",
+            border:
+              "1px solid #ddd",
             borderRadius: 10,
             background: "#fff",
           }}
         >
-          <div style={{ color: "#666" }}>
+          <div
+            style={{
+              color: "#666",
+            }}
+          >
             Total Leads
           </div>
 
@@ -184,17 +587,50 @@ export default async function Leads() {
           </strong>
         </div>
 
-        {/* ACTIVE AGENTS */}
+        {/* FILTERED */}
 
         <div
           style={{
             padding: 18,
-            border: "1px solid #ddd",
+            border:
+              "1px solid #ddd",
             borderRadius: 10,
             background: "#fff",
           }}
         >
-          <div style={{ color: "#666" }}>
+          <div
+            style={{
+              color: "#666",
+            }}
+          >
+            Filtered Queries
+          </div>
+
+          <strong
+            style={{
+              fontSize: 26,
+            }}
+          >
+            {filteredCount}
+          </strong>
+        </div>
+
+        {/* AGENTS */}
+
+        <div
+          style={{
+            padding: 18,
+            border:
+              "1px solid #ddd",
+            borderRadius: 10,
+            background: "#fff",
+          }}
+        >
+          <div
+            style={{
+              color: "#666",
+            }}
+          >
             Active Agents
           </div>
 
@@ -212,12 +648,17 @@ export default async function Leads() {
         <div
           style={{
             padding: 18,
-            border: "1px solid #ddd",
+            border:
+              "1px solid #ddd",
             borderRadius: 10,
             background: "#fff",
           }}
         >
-          <div style={{ color: "#666" }}>
+          <div
+            style={{
+              color: "#666",
+            }}
+          >
             Follow-ups
           </div>
 
@@ -242,39 +683,62 @@ export default async function Leads() {
         }}
       >
         <table className="table">
+
           <thead>
             <tr>
-              <th>Customer</th>
+              <th>
+                Customer
+              </th>
 
-              <th>Company</th>
+              <th>
+                Company
+              </th>
 
-              <th>Phone</th>
+              <th>
+                Phone
+              </th>
 
-              <th>Product</th>
+              <th>
+                Product
+              </th>
 
-              <th>Source</th>
+              <th>
+                Source
+              </th>
 
-              <th>Agent</th>
+              <th>
+                Agent
+              </th>
 
-              <th>Status</th>
+              <th>
+                Status
+              </th>
 
-              <th>Next Follow-up</th>
+              <th>
+                Next Follow-up
+              </th>
 
-              {/* NEW COLUMN */}
+              <th>
+                Last Remarks
+              </th>
 
-              <th>Last Remarks</th>
+              <th>
+                Reminder
+              </th>
 
-              <th>Reminder</th>
-
-              <th>Action</th>
+              <th>
+                Action
+              </th>
             </tr>
           </thead>
 
           <tbody>
-            {(leads ?? []).map(
-              (lead: any) => {
+
+            {filteredLeads.map(
+              (lead) => {
+
                 // ------------------------------------------
-                // FOLLOW-UP DATE
+                // FOLLOW-UP
                 // ------------------------------------------
 
                 const followup =
@@ -297,25 +761,22 @@ export default async function Leads() {
                     Date.now();
 
                 // ------------------------------------------
-                // AGENT NAME
+                // AGENT
                 // ------------------------------------------
 
+                const agentId =
+                  lead.assigned_agent_id;
+
                 const agentName =
-                  lead.assigned_agent
+                  agentId
                     ? agentMap.get(
-                        lead.assigned_agent
-                      ) ?? "Unknown Agent"
-                    : lead.assigned_agent_id
-                    ? agentMap.get(
-                        lead.assigned_agent_id
-                      ) ?? "Unknown Agent"
+                        agentId
+                      ) ??
+                      "Unknown Agent"
                     : "Unassigned";
 
                 // ------------------------------------------
-                // LAST REMARKS
-                //
-                // First check remarks.
-                // If remarks is empty, check notes.
+                // REMARKS
                 // ------------------------------------------
 
                 const lastRemarks =
@@ -324,10 +785,11 @@ export default async function Leads() {
                   "-";
 
                 return (
-                  <tr key={lead.id}>
-                    {/* =====================================
-                        CUSTOMER
-                    ===================================== */}
+                  <tr
+                    key={lead.id}
+                  >
+
+                    {/* CUSTOMER */}
 
                     <td>
                       <strong>
@@ -336,18 +798,14 @@ export default async function Leads() {
                       </strong>
                     </td>
 
-                    {/* =====================================
-                        COMPANY
-                    ===================================== */}
+                    {/* COMPANY */}
 
                     <td>
                       {lead.company_name ??
                         "-"}
                     </td>
 
-                    {/* =====================================
-                        PHONE
-                    ===================================== */}
+                    {/* PHONE */}
 
                     <td>
                       {lead.phone ??
@@ -355,26 +813,23 @@ export default async function Leads() {
                         "-"}
                     </td>
 
-                    {/* =====================================
-                        PRODUCT
-                    ===================================== */}
+                    {/* PRODUCT */}
 
                     <td>
-                      {lead.product ?? "-"}
+                      <strong>
+                        {lead.product ??
+                          "-"}
+                      </strong>
                     </td>
 
-                    {/* =====================================
-                        SOURCE
-                    ===================================== */}
+                    {/* SOURCE */}
 
                     <td>
                       {lead.source ??
                         "manual"}
                     </td>
 
-                    {/* =====================================
-                        AGENT
-                    ===================================== */}
+                    {/* AGENT */}
 
                     <td>
                       <strong>
@@ -382,9 +837,7 @@ export default async function Leads() {
                       </strong>
                     </td>
 
-                    {/* =====================================
-                        STATUS
-                    ===================================== */}
+                    {/* STATUS */}
 
                     <td>
                       <span
@@ -401,9 +854,7 @@ export default async function Leads() {
                       </span>
                     </td>
 
-                    {/* =====================================
-                        NEXT FOLLOW-UP
-                    ===================================== */}
+                    {/* FOLLOW-UP */}
 
                     <td>
                       {followup &&
@@ -414,9 +865,10 @@ export default async function Leads() {
                           <div
                             style={{
                               fontWeight: 600,
-                              color: isOverdue
-                                ? "red"
-                                : "#222",
+                              color:
+                                isOverdue
+                                  ? "red"
+                                  : "#222",
                               whiteSpace:
                                 "nowrap",
                             }}
@@ -428,8 +880,10 @@ export default async function Leads() {
                                 month: "numeric",
                                 year: "numeric",
                                 hour: "numeric",
-                                minute: "2-digit",
-                                hour12: true,
+                                minute:
+                                  "2-digit",
+                                hour12:
+                                  true,
                               }
                             )}
                           </div>
@@ -437,47 +891,43 @@ export default async function Leads() {
                           {isOverdue && (
                             <small
                               style={{
-                                color: "red",
-                                fontWeight: 700,
+                                color:
+                                  "red",
+                                fontWeight:
+                                  700,
                               }}
                             >
                               OVERDUE
                             </small>
                           )}
                         </div>
-                      ) : lead
-                          .next_follow_up_date ? (
-                        <div>
-                          <div
-                            style={{
-                              fontWeight: 600,
-                              whiteSpace:
-                                "nowrap",
-                            }}
-                          >
-                            {
-                              lead.next_follow_up_date
-                            }
+                      ) : lead.next_follow_up_date ? (
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            whiteSpace:
+                              "nowrap",
+                          }}
+                        >
+                          {
+                            lead.next_follow_up_date
+                          }
 
-                            {lead
-                              .next_follow_up_time
-                              ? `, ${String(
-                                  lead.next_follow_up_time
-                                ).substring(
-                                  0,
-                                  5
-                                )}`
-                              : ""}
-                          </div>
+                          {lead.next_follow_up_time
+                            ? `, ${String(
+                                lead.next_follow_up_time
+                              ).substring(
+                                0,
+                                5
+                              )}`
+                            : ""}
                         </div>
                       ) : (
                         "-"
                       )}
                     </td>
 
-                    {/* =====================================
-                        LAST REMARKS
-                    ===================================== */}
+                    {/* LAST REMARKS */}
 
                     <td>
                       <div
@@ -496,22 +946,24 @@ export default async function Leads() {
                               : "#334155",
                           fontSize: 14,
                         }}
-                        title={lastRemarks}
+                        title={
+                          lastRemarks
+                        }
                       >
                         {lastRemarks}
                       </div>
                     </td>
 
-                    {/* =====================================
-                        REMINDER
-                    ===================================== */}
+                    {/* REMINDER */}
 
                     <td>
                       {lead.reminder_enabled ? (
                         <span
                           style={{
-                            color: "green",
-                            fontWeight: 600,
+                            color:
+                              "green",
+                            fontWeight:
+                              600,
                             whiteSpace:
                               "nowrap",
                           }}
@@ -521,7 +973,8 @@ export default async function Leads() {
                       ) : (
                         <span
                           style={{
-                            color: "#777",
+                            color:
+                              "#777",
                           }}
                         >
                           OFF
@@ -529,9 +982,7 @@ export default async function Leads() {
                       )}
                     </td>
 
-                    {/* =====================================
-                        ACTION
-                    ===================================== */}
+                    {/* ACTION */}
 
                     <td>
                       <Link
@@ -549,38 +1000,85 @@ export default async function Leads() {
                         Edit
                       </Link>
                     </td>
+
                   </tr>
                 );
               }
             )}
+
           </tbody>
         </table>
       </div>
 
       {/* ==================================================
-          EMPTY STATE
+          NO FILTER RESULTS
       ================================================== */}
 
-      {(leads ?? []).length === 0 && (
+      {filteredLeads.length === 0 &&
+        leads.length > 0 && (
+          <div
+            style={{
+              padding: 40,
+              textAlign: "center",
+              border:
+                "1px solid #ddd",
+              borderRadius: 10,
+              marginTop: 20,
+              background: "#fff",
+            }}
+          >
+            <h3>
+              No matching queries
+            </h3>
+
+            <p
+              style={{
+                color: "#666",
+              }}
+            >
+              No leads match the selected
+              agent/product filters.
+            </p>
+
+            <button
+              type="button"
+              className="btn"
+              onClick={
+                resetFilters
+              }
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
+
+      {/* ==================================================
+          EMPTY DATABASE
+      ================================================== */}
+
+      {leads.length === 0 && (
         <div
           style={{
             padding: 40,
             textAlign: "center",
-            border: "1px solid #ddd",
+            border:
+              "1px solid #ddd",
             borderRadius: 10,
             marginTop: 20,
             background: "#fff",
           }}
         >
-          <h3>No leads found</h3>
+          <h3>
+            No leads found
+          </h3>
 
           <p
             style={{
               color: "#666",
             }}
           >
-            Create your first lead or import
-            leads from Excel.
+            Create your first lead or
+            import leads from Excel.
           </p>
 
           <Link
