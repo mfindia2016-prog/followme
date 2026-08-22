@@ -1,172 +1,348 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default function UpdatePassword() {
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [ready, setReady] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
+export default function UpdatePasswordPage() {
   const router = useRouter();
 
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] =
+    useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] =
+    useState(true);
+
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
   useEffect(() => {
-    const supabase = supabaseBrowser();
+    const supabase = supabaseBrowser;
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
-      (event: string, session: any) => {
+      (event) => {
         if (
           event === "PASSWORD_RECOVERY" ||
-          event === "SIGNED_IN" ||
-          session
+          event === "SIGNED_IN"
         ) {
-          setReady(true);
+          setCheckingSession(false);
         }
       }
     );
 
-    supabase.auth.getSession().then((result: any) => {
-      if (result?.data?.session) {
-        setReady(true);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (data.session) {
+          setCheckingSession(false);
+        } else {
+          setCheckingSession(false);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setCheckingSession(false);
+      });
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
-  async function updatePassword(e: FormEvent) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     setError("");
     setMessage("");
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      setError(
+        "Password must be at least 6 characters."
+      );
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(
+        "Passwords do not match."
+      );
       return;
     }
 
     setLoading(true);
 
-    const supabase = supabaseBrowser();
+    try {
+      const supabase = supabaseBrowser;
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password,
-    });
+      const { error: updateError } =
+        await supabase.auth.updateUser({
+          password,
+        });
 
-    setLoading(false);
+      if (updateError) {
+        throw updateError;
+      }
 
-    if (updateError) {
-      setError(updateError.message);
-      return;
+      setMessage(
+        "Password updated successfully."
+      );
+
+      setPassword("");
+      setConfirmPassword("");
+
+      setTimeout(() => {
+        router.push("/login");
+        router.refresh();
+      }, 1200);
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update password."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setMessage("Password updated successfully.");
-
-    setTimeout(() => {
-      router.push("/login");
-      router.refresh();
-    }, 1200);
   }
 
-  if (!ready) {
+  if (checkingSession) {
     return (
-      <main className="login">
-        <div className="loginbox">
-          <div className="brand">MF India CRM</div>
-          <div className="tag">Cure with Care</div>
-
-          <h2>Update password</h2>
-
-          <p style={{ color: "#666" }}>
-            Checking your password reset session...
-          </p>
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#f8fafc",
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            background: "#fff",
+            padding: 30,
+            borderRadius: 14,
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          Checking password reset session...
         </div>
       </main>
     );
   }
 
   return (
-    <main className="login">
-      <form className="loginbox" onSubmit={updatePassword}>
-        <div className="brand">MF India CRM</div>
-
-        <div className="tag">Cure with Care</div>
-
-        <h2>Update password</h2>
-
-        {error && <div className="error">{error}</div>}
-
-        {message && <div className="success">{message}</div>}
-
-        <div className="field">
-          <label>New Password</label>
-
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter new password"
-            required
-            minLength={6}
-          />
-        </div>
-
-        <div className="field" style={{ marginTop: 14 }}>
-          <label>Confirm Password</label>
-
-          <input
-            className="input"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm new password"
-            required
-            minLength={6}
-          />
-        </div>
-
-        <button
-          className="btn"
-          type="submit"
-          disabled={loading}
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        background: "#f8fafc",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 14,
+          padding: 30,
+          boxShadow:
+            "0 8px 30px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div
           style={{
-            width: "100%",
-            marginTop: 18,
+            textAlign: "center",
+            marginBottom: 28,
           }}
         >
-          {loading ? "Updating..." : "Update Password"}
-        </button>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 28,
+              color: "#0f172a",
+            }}
+          >
+            Update Password
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              color: "#64748b",
+            }}
+          >
+            Create your new password.
+          </p>
+        </div>
+
+        {message && (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 8,
+              background: "#dcfce7",
+              border:
+                "1px solid #bbf7d0",
+              color: "#166534",
+              fontSize: 14,
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        {error && (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 8,
+              background: "#fee2e2",
+              border:
+                "1px solid #fecaca",
+              color: "#991b1b",
+              fontSize: 14,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 18 }}>
+            <label
+              htmlFor="password"
+              style={{
+                display: "block",
+                marginBottom: 7,
+                fontWeight: 600,
+                color: "#334155",
+              }}
+            >
+              New Password
+            </label>
+
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+              placeholder="Enter new password"
+              autoComplete="new-password"
+              required
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "12px 14px",
+                borderRadius: 8,
+                border:
+                  "1px solid #cbd5e1",
+                fontSize: 15,
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 22 }}>
+            <label
+              htmlFor="confirmPassword"
+              style={{
+                display: "block",
+                marginBottom: 7,
+                fontWeight: 600,
+                color: "#334155",
+              }}
+            >
+              Confirm Password
+            </label>
+
+            <input
+              id="confirmPassword"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) =>
+                setConfirmPassword(
+                  e.target.value
+                )
+              }
+              placeholder="Confirm new password"
+              autoComplete="new-password"
+              required
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "12px 14px",
+                borderRadius: 8,
+                border:
+                  "1px solid #cbd5e1",
+                fontSize: 15,
+              }}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: "13px 16px",
+              border: "none",
+              borderRadius: 8,
+              background: "#111827",
+              color: "#fff",
+              fontWeight: 600,
+              cursor: loading
+                ? "not-allowed"
+                : "pointer",
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading
+              ? "Updating..."
+              : "Update Password"}
+          </button>
+        </form>
 
         <button
           type="button"
-          onClick={() => router.push("/login")}
+          onClick={() =>
+            router.push("/login")
+          }
           style={{
             width: "100%",
-            marginTop: 12,
-            background: "transparent",
-            border: 0,
-            color: "#1769e0",
-            cursor: "pointer",
+            marginTop: 15,
+            padding: "11px 16px",
+            border:
+              "1px solid #cbd5e1",
+            borderRadius: 8,
+            background: "#fff",
+            color: "#334155",
             fontWeight: 600,
+            cursor: "pointer",
           }}
         >
-          Back to Login
+          ← Back to Login
         </button>
-      </form>
+      </div>
     </main>
   );
 }
